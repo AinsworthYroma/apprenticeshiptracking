@@ -1,17 +1,10 @@
 'use client';
 
 import type { Application, ApplicationStatus, UserProfile } from './types';
+import { notifyStorageChange } from './storageEvents';
 
 const APPLICATIONS_KEY = 'apprenticeship_applications';
 const PROFILE_KEY = 'apprenticeship_profile';
-
-// Lazy import to avoid circular dependency — resolved at call time
-function notify(): void {
-  // Dynamic import pattern avoids the circular dep at module level
-  import('./useApplications').then(({ notifyStorageChange }) =>
-    notifyStorageChange()
-  );
-}
 
 export function getApplications(): Application[] {
   if (typeof window === 'undefined') return [];
@@ -36,13 +29,13 @@ export function saveApplication(application: Application): void {
     applications.push(application);
   }
   localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(applications));
-  notify();
+  notifyStorageChange();
 }
 
 export function removeApplication(offerId: string): void {
   const applications = getApplications().filter((a) => a.offerId !== offerId);
   localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(applications));
-  notify();
+  notifyStorageChange();
 }
 
 export function updateApplicationStatus(offerId: string, status: ApplicationStatus): void {

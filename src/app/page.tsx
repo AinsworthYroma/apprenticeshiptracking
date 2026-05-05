@@ -16,6 +16,14 @@ export default function HomePage() {
   const [durationFilter, setDurationFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
 
+  const resetFilters = () => {
+    setSearch('');
+    setCompanyTypeFilter('all');
+    setJobFamilyFilter('all');
+    setCredibilityFilter(0);
+    setDurationFilter('all');
+  };
+
   const filtered = useMemo(() => {
     let list = OFFERS.filter((offer) => {
       if (
@@ -109,7 +117,7 @@ export default function HomePage() {
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <p className="text-gray-400 font-medium">Aucune offre ne correspond à vos critères</p>
               <button
-                onClick={() => { setSearch(''); setCompanyTypeFilter('all'); setJobFamilyFilter('all'); setCredibilityFilter(0); setDurationFilter('all'); }}
+                onClick={resetFilters}
                 className="mt-4 text-indigo-600 text-sm hover:underline"
               >
                 Réinitialiser les filtres
