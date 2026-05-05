@@ -17,16 +17,16 @@ const JOB_FAMILY_SKILLS: Record<JobFamily, string> = {
     "ma créativité, mon sens analytique et ma maîtrise des outils marketing digitaux",
   finance:
     "mes compétences en analyse financière, ma rigueur et ma maîtrise des outils de modélisation",
-  rh: "mon sens de l\u2019écoute, mon empathie et mes connaissances en droit du travail et gestion des talents",
+  rh: "mon sens de l’écoute, mon empathie et mes connaissances en droit du travail et gestion des talents",
   commerce:
     "mon goût du challenge commercial, mon sens de la négociation et mon orientation résultats",
   tech: "mes compétences techniques, ma curiosité pour les nouvelles technologies et ma capacité à résoudre des problèmes complexes",
   communication:
     "mes qualités rédactionnelles, ma créativité et ma capacité à adapter les messages aux différentes audiences",
   logistique:
-    "mon sens de l\u2019organisation, mon esprit d\u2019analyse et ma capacité à optimiser les processus",
+    "mon sens de l’organisation, mon esprit d’analyse et ma capacité à optimiser les processus",
   juridique:
-    "ma rigueur juridique, mes capacités d\u2019analyse et ma maîtrise des fondamentaux du droit des affaires",
+    "ma rigueur juridique, mes capacités d’analyse et ma maîtrise des fondamentaux du droit des affaires",
   conseil:
     "mes capacités analytiques, ma vision stratégique et ma capacité à créer de la valeur pour mes clients",
 };
@@ -35,17 +35,17 @@ const JOB_FAMILY_MOTIVATION: Record<JobFamily, string> = {
   marketing:
     "créer des expériences mémorables pour les consommateurs et contribuer à la croissance des marques dans un environnement digital en constante évolution",
   finance:
-    "contribuer à la prise de décisions stratégiques grâce à l\u2019analyse financière et participer à la création de valeur pour l\u2019entreprise",
+    "contribuer à la prise de décisions stratégiques grâce à l’analyse financière et participer à la création de valeur pour l’entreprise",
   rh: "accompagner le développement des talents et contribuer à créer un environnement de travail épanouissant et performant",
   commerce:
-    "développer des relations durables avec les clients et contribuer directement à la croissance commerciale de l\u2019entreprise",
+    "développer des relations durables avec les clients et contribuer directement à la croissance commerciale de l’entreprise",
   tech: "concevoir et déployer des solutions technologiques innovantes qui transforment les usages et créent de la valeur",
   communication:
     "construire des récits de marque cohérents et engageants qui résonnent avec les audiences cibles",
   logistique:
-    "optimiser les flux et contribuer à l\u2019excellence opérationnelle tout en réduisant l\u2019empreinte environnementale",
+    "optimiser les flux et contribuer à l’excellence opérationnelle tout en réduisant l’empreinte environnementale",
   juridique:
-    "sécuriser les opérations de l\u2019entreprise et accompagner sa croissance dans un cadre réglementaire maîtrisé",
+    "sécuriser les opérations de l’entreprise et accompagner sa croissance dans un cadre réglementaire maîtrisé",
   conseil:
     "résoudre des problèmes complexes et accompagner les organisations dans leur transformation pour maximiser leur impact",
 };
@@ -75,21 +75,21 @@ ${profile.linkedinUrl ? `${profile.linkedinUrl}` : ''}
 
 ${today}
 
-Objet : Candidature pour le poste d\u2019${offer.title} — Contrat d\u2019Apprentissage
+Objet : Candidature pour le poste d’${offer.title} — Contrat d’Apprentissage
 
 Madame, Monsieur,
 
-Actuellement étudiant(e) en ${profile.program} à ${profile.school}, je suis à la recherche d\u2019une alternance dans le domaine de ${domainText} pour ${offer.startDate}. La lecture de votre offre pour le poste d\u2019${offer.title} au sein de ${offer.company} a immédiatement retenu mon attention et j\u2019ai la conviction que ce poste correspond pleinement à mes aspirations professionnelles.
+Actuellement étudiant(e) en ${profile.program} à ${profile.school}, je suis à la recherche d’une alternance dans le domaine de ${domainText} pour ${offer.startDate}. La lecture de votre offre pour le poste d’${offer.title} au sein de ${offer.company} a immédiatement retenu mon attention et j’ai la conviction que ce poste correspond pleinement à mes aspirations professionnelles.
 
 ${offer.company} est un acteur reconnu dans son secteur : ${offer.companyDescription.split('.')[0]}. Votre dynamisme et vos ambitions de croissance sont pour moi une réelle source de motivation. Je souhaite contribuer à vos projets tout en développant mes compétences dans un environnement stimulant et exigeant.
 
-Au cours de mon parcours académique à ${profile.school}, j\u2019ai développé ${skillsText}. ${userSkillsList} Ma formation m\u2019a appris à travailler en équipe, à être rigoureux(se) et à m\u2019adapter rapidement à de nouveaux environnements — des qualités que je mettrai pleinement au service de votre équipe.
+Au cours de mon parcours académique à ${profile.school}, j’ai développé ${skillsText}. ${userSkillsList} Ma formation m’a appris à travailler en équipe, à être rigoureux(se) et à m’adapter rapidement à de nouveaux environnements — des qualités que je mettrai pleinement au service de votre équipe.
 
-Ce qui me motive profondément, c\u2019est ${motivationText}. Cette alternance représente pour moi une opportunité unique d\u2019évoluer dans un cadre professionnel de premier plan, au contact d\u2019experts qui pourront m\u2019aider à progresser et à confirmer mon projet professionnel.
+Ce qui me motive profondément, c’est ${motivationText}. Cette alternance représente pour moi une opportunité unique d’évoluer dans un cadre professionnel de premier plan, au contact d’experts qui pourront m’aider à progresser et à confirmer mon projet professionnel.
 
 Je suis disponible pour un entretien à votre convenance et me tiens à votre disposition pour vous fournir tout document complémentaire (CV, relevés de notes, lettre de recommandation).
 
-Dans l\u2019attente de votre retour, je vous prie d\u2019agréer, Madame, Monsieur, l\u2019expression de mes salutations distinguées.
+Dans l’attente de votre retour, je vous prie d’agréer, Madame, Monsieur, l’expression de mes salutations distinguées.
 
 ${profile.firstName} ${profile.lastName}`;
 }

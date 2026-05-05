@@ -8,24 +8,36 @@ interface CoverLetterProps {
 
 export default function CoverLetter({ text }: CoverLetterProps) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
 
   const handleCopy = async () => {
+    setCopyError(false);
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard API not available — fall back to execCommand
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (success) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } else {
+          setCopyError(true);
+          setTimeout(() => setCopyError(false), 3000);
+        }
+      } catch {
+        setCopyError(true);
+        setTimeout(() => setCopyError(false), 3000);
+      }
     }
   };
 
@@ -53,6 +65,8 @@ export default function CoverLetter({ text }: CoverLetterProps) {
           className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
             copied
               ? 'bg-green-100 text-green-700'
+              : copyError
+              ? 'bg-red-100 text-red-700'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
@@ -62,6 +76,13 @@ export default function CoverLetter({ text }: CoverLetterProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
               Copié !
+            </>
+          ) : copyError ? (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Échec de la copie
             </>
           ) : (
             <>

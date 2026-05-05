@@ -136,8 +136,8 @@ export default function ProfilePage() {
               type="number"
               value={profile.graduationYear}
               onChange={(e) => handleChange('graduationYear', parseInt(e.target.value))}
-              min={2024}
-              max={2030}
+              min={new Date().getFullYear()}
+              max={new Date().getFullYear() + 6}
               className="w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>

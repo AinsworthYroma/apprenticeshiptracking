@@ -665,7 +665,7 @@ export const ALUMNI: Alumni[] = [
     linkedinUrl: "#",
     avatarInitials: "ER",
   },
-  // L"Oréal
+  // L'Oréal
   {
     id: "a4",
     name: "Lucas Fontaine",
@@ -838,7 +838,7 @@ export const COMPANY_NEWS: CompanyNews[] = [
     source: "TechCrunch",
     type: "finance",
   },
-  // L"Oréal
+  // L'Oréal
   {
     id: "n5",
     company: "L'Oréal",
