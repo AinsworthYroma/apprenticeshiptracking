@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cap Alternance Paris 2026</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="profileGate" class="profile-gate">
+      <div class="profile-gate-bg" aria-hidden="true"></div>
+      <div class="profile-gate-card">
+        <div class="gate-logo" aria-hidden="true">◈</div>
+        <div id="profileChoiceView" class="profile-choice-view">
+          <h2>Quel espace ?</h2>
+          <p>Selectionne ton profil pour acceder a ta session.</p>
+          <div class="profile-gate-actions">
+            <button type="button" data-profile-choice="copine">Célest</button>
+            <button type="button" data-profile-choice="admin">Admin</button>
+          </div>
+        </div>
+        <div id="adminLoginView" class="admin-login-view hidden">
+          <h2>Connexion Admin</h2>
+          <p>Saisir le mot de passe pour acceder.</p>
+          <form id="adminLoginForm">
+            <label for="adminLoginPassword">Mot de passe</label>
+            <input id="adminLoginPassword" type="password" autocomplete="off" placeholder="Mot de passe" />
+            <div class="admin-login-actions">
+              <button type="submit">Valider</button>
+              <button type="button" id="adminLoginBackButton">Retour</button>
+            </div>
+            <div id="adminLoginError" class="admin-login-error hidden"></div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="profileIntro" class="profile-intro hidden" aria-live="polite">
+      <div class="profile-intro-card">
+        <div class="intro-stars" aria-hidden="true"></div>
+        <p class="intro-small">Bienvenue</p>
+        <h2>Bonjour Célest</h2>
+        <p>Ton espace se charge...</p>
+      </div>
+      <div class="intro-launch-layer" aria-hidden="true">
+        <div class="intro-rocket"></div>
+      </div>
+    </div>
+
+    <header class="hero">
+      <div class="hero-top">
+        <div class="hero-brand">
+          <span class="brand-icon" aria-hidden="true">◈</span>
+          <span class="brand-name">Cap Alternance <span class="brand-year">2026</span></span>
+        </div>
+        <div class="profile-indicator">
+          <span class="profile-label">Profil&nbsp;<strong id="activeProfileLabel">—</strong></span>
+          <button id="switchProfileButton" type="button">Changer</button>
+        </div>
+      </div>
+      <div class="hero-headline">
+        <p class="eyebrow">Paris · Septembre 2026 · Multi-sources</p>
+        <h1>Trouvez votre alternance</h1>
+        <p class="hero-note">Une interface de prospection plus selecte, plus claire, plus precise.</p>
+      </div>
+      <div class="search-controls">
+        <input id="cityInput" type="text" value="Paris" />
+        <input id="startInput" type="text" value="septembre 2026" />
+        <button id="scrapeButton">Lancer le scraping</button>
+        <button id="refreshButton" title="Ignorer le cache et relancer le scraping complet">&#x21BA; Rafraichir</button>
+      </div>
+      <div class="filters-row">
+        <input id="keywordFilter" type="text" placeholder="Recherche mot-cle (poste, entreprise, competences...)" />
+        <select id="locationFilter">
+          <option value="">Toutes les localisations</option>
+        </select>
+        <select id="companySizeFilter">
+          <option value="">Toutes les tailles d'entreprise</option>
+        </select>
+        <select id="studyLevelFilter">
+          <option value="">Tous les niveaux d'etude</option>
+        </select>
+        <label class="toggle-filter">
+          <input type="checkbox" id="unseenOnlyFilter" />
+          Offres non traitees seulement
+        </label>
+      </div>
+      <p id="statusText" class="status">Pret a collecter des offres.</p>
+    </header>
+
+    <main class="workspace">
+      <nav class="tabs">
+        <button id="offersTabButton" class="tab-button active" data-tab="offers">Offres & Candidatures</button>
+        <button id="trackingTabButton" class="tab-button" data-tab="tracking">Suivi des candidatures</button>
+        <button id="adminTabButton" class="tab-button hidden" data-tab="admin">Admin - Cache serveur</button>
+      </nav>
+
+      <section id="offersTab" class="tab-pane active">
+        <div class="layout">
+          <section class="panel offers-panel">
+            <div class="panel-header">
+              <h2>Offres</h2>
+              <span id="offerCount" class="count-badge">0</span>
+            </div>
+            <div id="offerMap" class="offer-map" aria-label="Carte des offres sur Paris"></div>
+            <div id="offerList" class="offer-list"></div>
+          </section>
+
+          <aside class="sidebar">
+            <section class="panel profile-panel">
+              <h3 class="panel-section-title">Votre profil</h3>
+              <form id="profileForm" class="profile-form">
+                <input name="firstName" placeholder="Prenom" required />
+                <input name="lastName" placeholder="Nom" required />
+                <input name="formation" placeholder="Formation (ex: Master Marketing Digital)" required />
+                <input name="skills" placeholder="Competences cles (SEO, Excel, SQL...)" required />
+                <input name="email" type="email" placeholder="Email" required />
+                <input name="phone" placeholder="Telephone" required />
+              </form>
+              <h3 class="panel-section-title" style="margin-top:1.2rem">Sources</h3>
+              <div id="sourceStatusList" class="source-status-list"></div>
+            </section>
+
+            <section class="panel templates-panel">
+              <h3 class="panel-section-title">Templates</h3>
+              <p class="template-hint">Clique sur une offre pour generer lettre + accroche LinkedIn.</p>
+              <label for="coverLetterOutput">Lettre de motivation</label>
+              <textarea id="coverLetterOutput" rows="10" readonly></textarea>
+              <label for="linkedinOutput">Accroche LinkedIn</label>
+              <textarea id="linkedinOutput" rows="7" readonly></textarea>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section id="trackingTab" class="tab-pane">
+        <section class="panel tracking-panel">
+          <div class="panel-header">
+            <h2>Pipeline de candidatures</h2>
+            <span id="trackingCount">0 candidature</span>
+          </div>
+          <div id="trackingBoard" class="tracking-columns"></div>
+        </section>
+      </section>
+
+      <section id="adminTab" class="tab-pane">
+        <section class="panel admin-cache-panel">
+          <div class="panel-header">
+            <h2>Observabilite cache serveur</h2>
+            <span id="cacheInfoUpdatedAt" class="count-badge">--</span>
+          </div>
+
+          <div id="adminCacheGuard" class="admin-cache-guard">Cet onglet est reserve au profil Admin.</div>
+
+          <div id="adminCacheContent" class="admin-cache-content hidden">
+            <div class="admin-cache-summary-grid">
+              <article class="admin-metric-card">
+                <h3>Total cache runtime</h3>
+                <strong id="metricRuntimeTotal">0</strong>
+              </article>
+              <article class="admin-metric-card">
+                <h3>Total cache persistant</h3>
+                <strong id="metricPersistentTotal">0</strong>
+              </article>
+              <article class="admin-metric-card">
+                <h3>Mentions offres vues</h3>
+                <strong id="metricViewedMentions">0</strong>
+              </article>
+              <article class="admin-metric-card">
+                <h3>Mentions offres pipeline</h3>
+                <strong id="metricPipelineMentions">0</strong>
+              </article>
+            </div>
+
+            <div id="adminAccountStats" class="admin-account-stats"></div>
+
+            <div class="admin-cache-actions">
+              <article class="admin-action-card">
+                <h3>Effacer par compte</h3>
+                <p>Supprime un compte cible avec un type de cache precis.</p>
+                <label for="adminAccountTarget">Compte cible</label>
+                <select id="adminAccountTarget">
+                  <option value="admin">Admin</option>
+                  <option value="copine">Célest</option>
+                </select>
+                <label for="adminAccountCacheType">Type de cache</label>
+                <select id="adminAccountCacheType">
+                  <option value="all">Tous</option>
+                  <option value="ttl">Runtime (memoire)</option>
+                  <option value="persistent">Persistant (historique)</option>
+                </select>
+                <button id="clearByAccountButton" type="button">Effacer ce compte</button>
+              </article>
+
+              <article class="admin-action-card">
+                <h3>Effacer par type</h3>
+                <p>Supprime un type de cache pour tous les comptes serveur.</p>
+                <label for="adminTypeCacheType">Type de cache</label>
+                <select id="adminTypeCacheType">
+                  <option value="ttl">Runtime (memoire)</option>
+                  <option value="persistent">Persistant (historique)</option>
+                  <option value="all">Tous</option>
+                </select>
+                <button id="clearByTypeButton" type="button">Effacer ce type</button>
+              </article>
+
+              <article class="admin-action-card">
+                <h3>Effacer les mentions vues</h3>
+                <p>Supprime les mentions offres vues pour le compte choisi.</p>
+                <label for="adminViewedTarget">Compte cible</label>
+                <select id="adminViewedTarget">
+                  <option value="admin">Admin</option>
+                  <option value="copine">Célest</option>
+                </select>
+                <button id="clearAllViewedButton" type="button">Effacer les mentions vues</button>
+              </article>
+
+              <article class="admin-action-card admin-danger-card">
+                <h3>Effacer les vues des 2 comptes</h3>
+                <p>Supprime toutes les mentions vues pour Admin et Célest (mot de passe requis).</p>
+                <button id="clearViewedBothButton" type="button">Effacer les vues des 2 comptes</button>
+              </article>
+
+              <article class="admin-action-card admin-danger-card">
+                <h3>Effacer tout le serveur</h3>
+                <p>Vide tous les caches serveur (runtime + persistant, tous comptes).</p>
+                <button id="clearAllServerCacheButton" type="button">Effacer tous les caches serveur</button>
+              </article>
+            </div>
+
+            <div class="admin-password-box">
+              <p class="admin-password-note">
+                Mot de passe Celextime exige pour les actions sur le compte Célest et la purge complete serveur.
+              </p>
+              <label for="celextimePassword">Mot de passe Celextime</label>
+              <input id="celextimePassword" type="password" autocomplete="off" placeholder="Saisir le mot de passe" />
+              <label for="celextimePasswordConfirm">Confirmer le mot de passe</label>
+              <input
+                id="celextimePasswordConfirm"
+                type="password"
+                autocomplete="off"
+                placeholder="Saisir a nouveau le mot de passe"
+              />
+            </div>
+
+            <p id="adminCacheStatus" class="status">Chargement des infos cache...</p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="app.js"></script>
+  </body>
+</html>

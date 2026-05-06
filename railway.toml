@@ -1,0 +1,10 @@
+[build]
+builder = "NIXPACKS"
+
+[build.variables]
+NIXPACKS_PKGS = "nodejs_20"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
