@@ -51,6 +51,7 @@ const clearAllViewedButton = document.getElementById('clearAllViewedButton');
 const clearViewedBothButton = document.getElementById('clearViewedBothButton');
 const celextimePassword = document.getElementById('celextimePassword');
 const celextimePasswordConfirm = document.getElementById('celextimePasswordConfirm');
+const mobileOffersToggle = document.getElementById('mobileOffersToggle');
 const profileChoiceView = document.getElementById('profileChoiceView');
 const profileLoginView = document.getElementById('profileLoginView');
 const profileLoginTitle = document.getElementById('profileLoginTitle');
@@ -74,6 +75,42 @@ let activeProfile = getStoredProfile();
 let profileIntroTimer = null;
 let searchCascadeTimer = null;
 let pendingProfileLogin = '';
+let mobileOffersExpanded = false;
+
+function isMobileViewport() {
+  return window.innerWidth <= 760;
+}
+
+function updateMobileOffersToggleUI() {
+  if (!offersPanel || !mobileOffersToggle) {
+    return;
+  }
+
+  const mobile = isMobileViewport();
+  if (!mobile) {
+    offersPanel.classList.remove('mobile-collapsed');
+    mobileOffersToggle.setAttribute('aria-expanded', 'true');
+    return;
+  }
+
+  offersPanel.classList.toggle('mobile-collapsed', !mobileOffersExpanded);
+  mobileOffersToggle.setAttribute('aria-expanded', mobileOffersExpanded ? 'true' : 'false');
+}
+
+function updateMobileOffersToggleLabel() {
+  if (!mobileOffersToggle) {
+    return;
+  }
+
+  const count = state.filteredOffers.length;
+  if (isMobileViewport() && !mobileOffersExpanded) {
+    mobileOffersToggle.textContent = `Voir les offres (${count})`;
+  } else if (isMobileViewport()) {
+    mobileOffersToggle.textContent = 'Masquer les offres';
+  } else {
+    mobileOffersToggle.textContent = 'Voir les offres';
+  }
+}
 
 const state = {
   activeProfile,
@@ -622,6 +659,8 @@ function syncOffersPanelHeightWithSidebar() {
 }
 
 function requestLayoutSync() {
+  updateMobileOffersToggleUI();
+
   if (layoutSyncRaf) {
     cancelAnimationFrame(layoutSyncRaf);
   }
@@ -738,11 +777,13 @@ function renderOffers() {
   if (state.filteredOffers.length === 0) {
     offerList.innerHTML = '<p>Aucune offre ne correspond aux filtres actuels.</p>';
     offerCount.textContent = '0';
+    updateMobileOffersToggleLabel();
     requestLayoutSync();
     return;
   }
 
   offerCount.textContent = `${state.filteredOffers.length}`;
+  updateMobileOffersToggleLabel();
 
   state.filteredOffers.forEach((offer, index) => {
     const inPipeline = Boolean(state.tracked[offer.id]);
@@ -1383,6 +1424,15 @@ if (adminTabButton) {
 }
 window.addEventListener('resize', requestLayoutSync);
 
+if (mobileOffersToggle) {
+  mobileOffersToggle.addEventListener('click', () => {
+    mobileOffersExpanded = !mobileOffersExpanded;
+    updateMobileOffersToggleUI();
+    updateMobileOffersToggleLabel();
+    requestLayoutSync();
+  });
+}
+
 profileChoiceButtons.forEach((button) => {
   button.addEventListener('click', () => {
     const profile = button.getAttribute('data-profile-choice');
@@ -1488,4 +1538,6 @@ renderOffers();
 renderTracking();
 renderMap();
 renderAdminCacheInfo();
+updateMobileOffersToggleUI();
+updateMobileOffersToggleLabel();
 requestLayoutSync();

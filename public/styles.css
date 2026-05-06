@@ -413,6 +413,16 @@ button:disabled { opacity: 0.38; cursor: default; }
   justify-content: space-between; margin-bottom: 0.7rem;
 }
 
+.offers-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mobile-offers-toggle {
+  display: none;
+}
+
 .panel-header h2 {
   margin: 0; font-size: 0.9rem; font-weight: 600;
   color: var(--text); letter-spacing: -0.01em;
@@ -1486,8 +1496,33 @@ body.search-cascade-active .filters-row > *:nth-child(5) { animation-delay: 0.26
     grid-template-columns: 1fr;
   }
 
-  .offer-list {
+  .mobile-offers-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(138, 102, 56, 0.24);
+    background: rgba(255, 255, 255, 0.76);
+    color: var(--text-mid);
+    font-size: 0.72rem;
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .offers-panel.mobile-collapsed .offer-map,
+  .offers-panel.mobile-collapsed .offer-list {
+    display: none;
+  }
+
+  .offers-panel.mobile-collapsed {
+    padding-bottom: 0.9rem;
+  }
+
+  .offers-panel .offer-list {
     max-height: 58vh;
+    min-height: 160px;
+    overflow-y: auto;
   }
 
   .custom-link-row,
