@@ -52,16 +52,12 @@ const clearViewedBothButton = document.getElementById('clearViewedBothButton');
 const celextimePassword = document.getElementById('celextimePassword');
 const celextimePasswordConfirm = document.getElementById('celextimePasswordConfirm');
 const profileChoiceView = document.getElementById('profileChoiceView');
-const adminLoginView = document.getElementById('adminLoginView');
-const adminLoginForm = document.getElementById('adminLoginForm');
-const adminLoginPassword = document.getElementById('adminLoginPassword');
-const adminLoginError = document.getElementById('adminLoginError');
-const adminLoginBackButton = document.getElementById('adminLoginBackButton');
-const copineLoginView = document.getElementById('copineLoginView');
-const copineLoginForm = document.getElementById('copineLoginForm');
-const copineLoginPassword = document.getElementById('copineLoginPassword');
-const copineLoginError = document.getElementById('copineLoginError');
-const copineLoginBackButton = document.getElementById('copineLoginBackButton');
+const profileLoginView = document.getElementById('profileLoginView');
+const profileLoginTitle = document.getElementById('profileLoginTitle');
+const profileLoginForm = document.getElementById('profileLoginForm');
+const profileLoginPassword = document.getElementById('profileLoginPassword');
+const profileLoginError = document.getElementById('profileLoginError');
+const profileLoginBackButton = document.getElementById('profileLoginBackButton');
 
 const PROFILE_STORAGE_KEY = 'apprenticeship-active-profile-v1';
 const STORAGE_KEY = 'apprenticeship-tracker-v2';
@@ -77,6 +73,7 @@ const PROFILE_ORDER = ['admin', 'copine'];
 let activeProfile = getStoredProfile();
 let profileIntroTimer = null;
 let searchCascadeTimer = null;
+let pendingProfileLogin = '';
 
 const state = {
   activeProfile,
@@ -279,44 +276,30 @@ function resetWorkingStateForProfile() {
   renderAdminCacheInfo();
 }
 
-function showAdminLoginForm() {
-  if (!profileChoiceView || !adminLoginView) {
+function showProfileLoginForm(profile) {
+  if (!profileChoiceView || !profileLoginView || !PROFILE_LABELS[profile]) {
     return;
   }
+
+  pendingProfileLogin = profile;
+  profileLoginTitle.textContent = profile === 'admin' ? 'Connexion Admin' : 'Connexion Célest';
   profileChoiceView.classList.add('hidden');
-  adminLoginView.classList.remove('hidden');
-  adminLoginPassword.focus();
-  adminLoginError.classList.add('hidden');
+  profileLoginView.classList.remove('hidden');
+  profileLoginPassword.value = '';
+  profileLoginError.classList.add('hidden');
+  profileLoginPassword.focus();
 }
 
-function hideAdminLoginForm() {
-  if (!profileChoiceView || !adminLoginView) {
+function hideProfileLoginForm() {
+  if (!profileChoiceView || !profileLoginView) {
     return;
   }
-  adminLoginView.classList.add('hidden');
+
+  pendingProfileLogin = '';
+  profileLoginView.classList.add('hidden');
   profileChoiceView.classList.remove('hidden');
-  adminLoginPassword.value = '';
-  adminLoginError.classList.add('hidden');
-}
-
-function showCopineLoginForm() {
-  if (!profileChoiceView || !copineLoginView) {
-    return;
-  }
-  profileChoiceView.classList.add('hidden');
-  copineLoginView.classList.remove('hidden');
-  copineLoginPassword.focus();
-  copineLoginError.classList.add('hidden');
-}
-
-function hideCopineLoginForm() {
-  if (!profileChoiceView || !copineLoginView) {
-    return;
-  }
-  copineLoginView.classList.add('hidden');
-  profileChoiceView.classList.remove('hidden');
-  copineLoginPassword.value = '';
-  copineLoginError.classList.add('hidden');
+  profileLoginPassword.value = '';
+  profileLoginError.classList.add('hidden');
 }
 
 async function verifyCelextimePassword(password, passwordConfirm = password) {
@@ -1403,61 +1386,39 @@ window.addEventListener('resize', requestLayoutSync);
 profileChoiceButtons.forEach((button) => {
   button.addEventListener('click', () => {
     const profile = button.getAttribute('data-profile-choice');
-    if (profile === 'admin') {
-      showAdminLoginForm();
-    } else if (profile === 'copine') {
-      showCopineLoginForm();
-    } else {
-      selectProfile(profile);
-    }
+    showProfileLoginForm(profile);
   });
 });
 
-if (adminLoginForm) {
-  adminLoginForm.addEventListener('submit', async (e) => {
+if (profileLoginForm) {
+  profileLoginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const password = adminLoginPassword.value;
-    const passwordCheck = await verifyCelextimePassword(password, password);
+    if (!pendingProfileLogin) {
+      return;
+    }
+
+    const password = profileLoginPassword.value;
+    const passwordCheck = pendingProfileLogin === 'admin'
+      ? await verifyCelextimePassword(password, password)
+      : await verifyCopinePassword(password);
 
     if (passwordCheck.ok) {
-      hideAdminLoginForm();
-      selectProfile('admin');
-    } else {
-      adminLoginError.textContent = passwordCheck.error || 'Mot de passe incorrect.';
-      adminLoginError.classList.remove('hidden');
-      adminLoginPassword.value = '';
-      adminLoginPassword.focus();
+      const profileToSelect = pendingProfileLogin;
+      hideProfileLoginForm();
+      selectProfile(profileToSelect);
+      return;
     }
+
+    profileLoginError.textContent = passwordCheck.error || 'Mot de passe incorrect.';
+    profileLoginError.classList.remove('hidden');
+    profileLoginPassword.value = '';
+    profileLoginPassword.focus();
   });
 }
 
-if (adminLoginBackButton) {
-  adminLoginBackButton.addEventListener('click', () => {
-    hideAdminLoginForm();
-  });
-}
-
-if (copineLoginForm) {
-  copineLoginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const password = copineLoginPassword.value;
-    const passwordCheck = await verifyCopinePassword(password);
-
-    if (passwordCheck.ok) {
-      hideCopineLoginForm();
-      selectProfile('copine');
-    } else {
-      copineLoginError.textContent = passwordCheck.error || 'Mot de passe incorrect.';
-      copineLoginError.classList.remove('hidden');
-      copineLoginPassword.value = '';
-      copineLoginPassword.focus();
-    }
-  });
-}
-
-if (copineLoginBackButton) {
-  copineLoginBackButton.addEventListener('click', () => {
-    hideCopineLoginForm();
+if (profileLoginBackButton) {
+  profileLoginBackButton.addEventListener('click', () => {
+    hideProfileLoginForm();
   });
 }
 

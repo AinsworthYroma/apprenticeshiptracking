@@ -31,30 +31,17 @@
             <button type="button" data-profile-choice="admin">Admin</button>
           </div>
         </div>
-        <div id="adminLoginView" class="admin-login-view hidden">
-          <h2>Connexion Admin</h2>
+        <div id="profileLoginView" class="admin-login-view hidden">
+          <h2 id="profileLoginTitle">Connexion</h2>
           <p>Saisir le mot de passe pour acceder.</p>
-          <form id="adminLoginForm">
-            <label for="adminLoginPassword">Mot de passe</label>
-            <input id="adminLoginPassword" type="password" autocomplete="off" placeholder="Mot de passe" />
+          <form id="profileLoginForm">
+            <label for="profileLoginPassword">Mot de passe</label>
+            <input id="profileLoginPassword" type="password" autocomplete="off" placeholder="Mot de passe" />
             <div class="admin-login-actions">
               <button type="submit">Valider</button>
-              <button type="button" id="adminLoginBackButton">Retour</button>
+              <button type="button" id="profileLoginBackButton">Retour</button>
             </div>
-            <div id="adminLoginError" class="admin-login-error hidden"></div>
-          </form>
-        </div>
-        <div id="copineLoginView" class="admin-login-view hidden">
-          <h2>Connexion Célest</h2>
-          <p>Saisir le mot de passe pour acceder.</p>
-          <form id="copineLoginForm">
-            <label for="copineLoginPassword">Mot de passe</label>
-            <input id="copineLoginPassword" type="password" autocomplete="off" placeholder="Mot de passe" />
-            <div class="admin-login-actions">
-              <button type="submit">Valider</button>
-              <button type="button" id="copineLoginBackButton">Retour</button>
-            </div>
-            <div id="copineLoginError" class="admin-login-error hidden"></div>
+            <div id="profileLoginError" class="admin-login-error hidden"></div>
           </form>
         </div>
       </div>
