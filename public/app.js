@@ -57,6 +57,11 @@ const adminLoginForm = document.getElementById('adminLoginForm');
 const adminLoginPassword = document.getElementById('adminLoginPassword');
 const adminLoginError = document.getElementById('adminLoginError');
 const adminLoginBackButton = document.getElementById('adminLoginBackButton');
+const copineLoginView = document.getElementById('copineLoginView');
+const copineLoginForm = document.getElementById('copineLoginForm');
+const copineLoginPassword = document.getElementById('copineLoginPassword');
+const copineLoginError = document.getElementById('copineLoginError');
+const copineLoginBackButton = document.getElementById('copineLoginBackButton');
 
 const PROFILE_STORAGE_KEY = 'apprenticeship-active-profile-v1';
 const STORAGE_KEY = 'apprenticeship-tracker-v2';
@@ -294,6 +299,26 @@ function hideAdminLoginForm() {
   adminLoginError.classList.add('hidden');
 }
 
+function showCopineLoginForm() {
+  if (!profileChoiceView || !copineLoginView) {
+    return;
+  }
+  profileChoiceView.classList.add('hidden');
+  copineLoginView.classList.remove('hidden');
+  copineLoginPassword.focus();
+  copineLoginError.classList.add('hidden');
+}
+
+function hideCopineLoginForm() {
+  if (!profileChoiceView || !copineLoginView) {
+    return;
+  }
+  copineLoginView.classList.add('hidden');
+  profileChoiceView.classList.remove('hidden');
+  copineLoginPassword.value = '';
+  copineLoginError.classList.add('hidden');
+}
+
 async function verifyCelextimePassword(password, passwordConfirm = password) {
   try {
     const response = await fetch('/api/admin/verify-password', {
@@ -305,6 +330,25 @@ async function verifyCelextimePassword(password, passwordConfirm = password) {
     const data = await readApiResponse(response, '/api/admin/verify-password');
     if (!response.ok || !data.ok) {
       return { ok: false, error: data.error || 'Mot de passe Celextime invalide.' };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: `Validation mot de passe impossible: ${error.message}` };
+  }
+}
+
+async function verifyCopinePassword(password) {
+  try {
+    const response = await fetch('/api/copine/verify-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: password || '' }),
+    });
+
+    const data = await readApiResponse(response, '/api/copine/verify-password');
+    if (!response.ok || !data.ok) {
+      return { ok: false, error: data.error || 'Mot de passe incorrect.' };
     }
 
     return { ok: true };
@@ -1361,6 +1405,8 @@ profileChoiceButtons.forEach((button) => {
     const profile = button.getAttribute('data-profile-choice');
     if (profile === 'admin') {
       showAdminLoginForm();
+    } else if (profile === 'copine') {
+      showCopineLoginForm();
     } else {
       selectProfile(profile);
     }
@@ -1388,6 +1434,30 @@ if (adminLoginForm) {
 if (adminLoginBackButton) {
   adminLoginBackButton.addEventListener('click', () => {
     hideAdminLoginForm();
+  });
+}
+
+if (copineLoginForm) {
+  copineLoginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = copineLoginPassword.value;
+    const passwordCheck = await verifyCopinePassword(password);
+
+    if (passwordCheck.ok) {
+      hideCopineLoginForm();
+      selectProfile('copine');
+    } else {
+      copineLoginError.textContent = passwordCheck.error || 'Mot de passe incorrect.';
+      copineLoginError.classList.remove('hidden');
+      copineLoginPassword.value = '';
+      copineLoginPassword.focus();
+    }
+  });
+}
+
+if (copineLoginBackButton) {
+  copineLoginBackButton.addEventListener('click', () => {
+    hideCopineLoginForm();
   });
 }
 

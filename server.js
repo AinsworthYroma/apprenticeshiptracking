@@ -32,8 +32,16 @@ const CELEXTIME_ADMIN_PASSWORD = normalizeText(
   process.env.CELEXTIME_ADMIN_PASSWORD || DEFAULT_CELEXTIME_ADMIN_PASSWORD
 );
 
+const DEFAULT_COPINE_PASSWORD = 'Celest1';
+const COPINE_PASSWORD = normalizeText(
+  process.env.COPINE_PASSWORD || DEFAULT_COPINE_PASSWORD
+);
+
 if (process.env.NODE_ENV === 'production' && !normalizeText(process.env.CELEXTIME_ADMIN_PASSWORD || '')) {
   console.warn('Warning: CELEXTIME_ADMIN_PASSWORD non defini, mot de passe par defaut utilise en production.');
+}
+if (process.env.NODE_ENV === 'production' && !normalizeText(process.env.COPINE_PASSWORD || '')) {
+  console.warn('Warning: COPINE_PASSWORD non defini, mot de passe par defaut utilise en production.');
 }
 
 // ---------------------------------------------------------------------------
@@ -1152,6 +1160,18 @@ app.post('/api/admin/verify-password', (req, res) => {
   const passwordCheck = validateCelextimePassword(req.body || {});
   if (!passwordCheck.ok) {
     return res.status(401).json({ ok: false, error: passwordCheck.error });
+  }
+
+  return res.json({ ok: true });
+});
+
+app.post('/api/copine/verify-password', (req, res) => {
+  const password = normalizeText(req.body?.password || '');
+  if (!password) {
+    return res.status(401).json({ ok: false, error: 'Mot de passe requis.' });
+  }
+  if (password !== COPINE_PASSWORD) {
+    return res.status(401).json({ ok: false, error: 'Mot de passe incorrect.' });
   }
 
   return res.json({ ok: true });
