@@ -64,6 +64,8 @@ const PROFILE_STORAGE_KEY = 'apprenticeship-active-profile-v1';
 const STORAGE_KEY = 'apprenticeship-tracker-v2';
 const VIEWED_STORAGE_KEY = 'apprenticeship-viewed-v1';
 const CUSTOM_LINKS_STORAGE_KEY = 'apprenticeship-custom-links-v1';
+const OFFERS_CACHE_KEY = 'apprenticeship-offers-cache-v1';
+const OFFERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 heures
 const TRACKING_STATUSES = ['A contacter', 'Candidature envoyee', 'Entretien', 'Refusee', 'Acceptee'];
 const PROFILE_LABELS = {
   admin: 'Admin (tests)',
@@ -1065,6 +1067,41 @@ async function generateTemplates(offer) {
   }
 }
 
+// ── Cache local des offres (localStorage, TTL 12h) ──────────────────────────
+function buildOffersCacheLocalKey(profile, city, start) {
+  return `${OFFERS_CACHE_KEY}-${(profile || 'admin').toLowerCase()}-${city}-${start}`;
+}
+
+function saveOffersToLocalCache(profile, city, start, data) {
+  try {
+    const key = buildOffersCacheLocalKey(profile, city, start);
+    localStorage.setItem(key, JSON.stringify({ data, savedAt: Date.now() }));
+  } catch (e) {
+    // localStorage plein ou indisponible — on ignore silencieusement
+  }
+}
+
+function loadOffersFromLocalCache(profile, city, start) {
+  try {
+    const key = buildOffersCacheLocalKey(profile, city, start);
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    if (!entry || !entry.savedAt || !entry.data) return null;
+    if (Date.now() - entry.savedAt > OFFERS_CACHE_TTL_MS) return null;
+    return { data: entry.data, savedAt: entry.savedAt };
+  } catch {
+    return null;
+  }
+}
+
+function clearOffersLocalCache(profile, city, start) {
+  try {
+    const key = buildOffersCacheLocalKey(profile, city, start);
+    localStorage.removeItem(key);
+  } catch { /* ignore */ }
+}
+
 async function scrapeOffers(forceRefresh = false) {
   const city = cityInput.value.trim() || 'Paris';
   const start = startInput.value.trim() || 'septembre 2026';
@@ -1073,6 +1110,24 @@ async function scrapeOffers(forceRefresh = false) {
     statusText.textContent = 'Choisis d\'abord un profil pour acceder a la recherche.';
     return;
   }
+
+  // -- Cache local : si pas force-refresh, servir depuis localStorage --
+  if (!forceRefresh) {
+    const cached = loadOffersFromLocalCache(state.activeProfile, city, start);
+    if (cached) {
+      state.offers = cached.data.offers || [];
+      state.sourceStatuses = cached.data.sourceStatuses || [];
+      updateFilterOptions();
+      applyOfferFilters();
+      renderSourceStatuses();
+      renderTracking();
+      const age = Math.round((Date.now() - cached.savedAt) / 60000);
+      statusText.textContent = `${state.offers.length} offres chargées depuis le cache local (sauvegardé il y a ${age} min). Clique sur ↺ pour actualiser.`;
+      return;
+    }
+  }
+
+  // -- Sinon, appel serveur --
   statusText.textContent = forceRefresh ? 'Rafraîchissement forcé en cours (peut prendre 1-2 min)...' : 'Scraping en cours...';
   scrapeButton.disabled = true;
   refreshButton.disabled = true;
@@ -1088,6 +1143,9 @@ async function scrapeOffers(forceRefresh = false) {
       throw new Error(data.error || `HTTP ${response.status}`);
     }
 
+    // Sauvegarder dans le cache local
+    saveOffersToLocalCache(state.activeProfile, city, start, data);
+
     state.offers = data.offers || [];
     state.sourceStatuses = data.sourceStatuses || [];
     updateFilterOptions();
@@ -1100,7 +1158,7 @@ async function scrapeOffers(forceRefresh = false) {
     const totalAfterDedup = data.totalAfterDedup ?? state.offers.length;
     const totalMatchedHeuristic = data.totalMatchedHeuristic ?? state.offers.length;
     const cacheInfo = data.fromCache
-      ? ` [cache du ${new Date(data.cachedAt).toLocaleTimeString('fr-FR')}]`
+      ? ` [cache serveur du ${new Date(data.cachedAt).toLocaleTimeString('fr-FR')}]`
       : ' [données fraîches]';
     statusText.textContent = sourceErrors
       ? `Collecte: ${totalFetchedBeforeDedup} brutes, ${totalAfterDedup} uniques, ${state.offers.length} affichees (${totalMatchedHeuristic} ciblees ville/date, ${sourceErrors} source(s) en erreur).${cacheInfo}`
