@@ -2,7 +2,7 @@
 builder = "NIXPACKS"
 
 [build.variables]
-NIXPACKS_PKGS = "nodejs_20"
+NIXPACKS_NODE_VERSION = "20"
 
 [deploy]
 startCommand = "npm start"
