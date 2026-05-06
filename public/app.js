@@ -1472,6 +1472,27 @@ if (profileLoginBackButton) {
   });
 }
 
+// Toggle afficher/masquer mot de passe
+const loginTogglePwd = document.querySelector('.login-toggle-pwd');
+if (loginTogglePwd) {
+  loginTogglePwd.addEventListener('click', () => {
+    const input = document.getElementById('profileLoginPassword');
+    const eyeShow = loginTogglePwd.querySelector('.eye-show');
+    const eyeHide = loginTogglePwd.querySelector('.eye-hide');
+    if (input.type === 'password') {
+      input.type = 'text';
+      eyeShow.classList.add('hidden');
+      eyeHide.classList.remove('hidden');
+      loginTogglePwd.setAttribute('aria-label', 'Masquer le mot de passe');
+    } else {
+      input.type = 'password';
+      eyeShow.classList.remove('hidden');
+      eyeHide.classList.add('hidden');
+      loginTogglePwd.setAttribute('aria-label', 'Afficher le mot de passe');
+    }
+  });
+}
+
 if (switchProfileButton) {
   switchProfileButton.addEventListener('click', () => {
     showProfileGate();
