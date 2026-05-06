@@ -1102,6 +1102,48 @@ function clearOffersLocalCache(profile, city, start) {
   } catch { /* ignore */ }
 }
 
+// ── Barre de progression scraping ─────────────────────────────────────────
+const scrapeProgressBar = document.getElementById('scrapeProgressBar');
+const scrapeProgressFill = document.getElementById('scrapeProgressFill');
+const scrapeProgressLabel = document.getElementById('scrapeProgressLabel');
+let _progressTimer = null;
+
+function startScrapeProgress() {
+  if (!scrapeProgressBar) return;
+  scrapeProgressBar.classList.remove('hidden');
+  scrapeProgressBar.removeAttribute('data-indeterminate');
+  scrapeProgressFill.style.width = '0%';
+  let pct = 0;
+  clearInterval(_progressTimer);
+  _progressTimer = setInterval(() => {
+    // Avance vite jusqu'à ~60%, puis ralentit fortement
+    const step = pct < 30 ? 4 : pct < 55 ? 1.5 : pct < 75 ? 0.5 : 0.15;
+    pct = Math.min(pct + step, 82);
+    scrapeProgressFill.style.width = `${pct}%`;
+    if (scrapeProgressLabel) scrapeProgressLabel.textContent = `${Math.round(pct)} %`;
+  }, 300);
+}
+
+function finishScrapeProgress() {
+  clearInterval(_progressTimer);
+  if (!scrapeProgressBar) return;
+  scrapeProgressFill.style.width = '100%';
+  if (scrapeProgressLabel) scrapeProgressLabel.textContent = '100 %';
+  setTimeout(() => {
+    scrapeProgressBar.classList.add('hidden');
+    scrapeProgressFill.style.width = '0%';
+    if (scrapeProgressLabel) scrapeProgressLabel.textContent = '';
+  }, 800);
+}
+
+function resetScrapeProgress() {
+  clearInterval(_progressTimer);
+  if (!scrapeProgressBar) return;
+  scrapeProgressBar.classList.add('hidden');
+  scrapeProgressFill.style.width = '0%';
+  if (scrapeProgressLabel) scrapeProgressLabel.textContent = '';
+}
+
 async function scrapeOffers(forceRefresh = false) {
   const city = cityInput.value.trim() || 'Paris';
   const start = startInput.value.trim() || 'septembre 2026';
@@ -1127,10 +1169,11 @@ async function scrapeOffers(forceRefresh = false) {
     }
   }
 
-  // -- Sinon, appel serveur --
+  // -- Sinon, appel serveur avec barre de progression --
   statusText.textContent = forceRefresh ? 'Rafraîchissement forcé en cours (peut prendre 1-2 min)...' : 'Scraping en cours...';
   scrapeButton.disabled = true;
   refreshButton.disabled = true;
+  startScrapeProgress();
 
   try {
     const url = `/api/offers?city=${encodeURIComponent(city)}&start=${encodeURIComponent(start)}&profile=${encodeURIComponent(
@@ -1152,6 +1195,7 @@ async function scrapeOffers(forceRefresh = false) {
     applyOfferFilters();
     renderSourceStatuses();
     renderTracking();
+    finishScrapeProgress();
 
     const sourceErrors = (data.errors || []).length;
     const totalFetchedBeforeDedup = data.totalFetchedBeforeDedup ?? state.offers.length;
@@ -1164,6 +1208,7 @@ async function scrapeOffers(forceRefresh = false) {
       ? `Collecte: ${totalFetchedBeforeDedup} brutes, ${totalAfterDedup} uniques, ${state.offers.length} affichees (${totalMatchedHeuristic} ciblees ville/date, ${sourceErrors} source(s) en erreur).${cacheInfo}`
       : `Collecte: ${totalFetchedBeforeDedup} brutes, ${totalAfterDedup} uniques, ${state.offers.length} affichees (${totalMatchedHeuristic} ciblees ville/date).${cacheInfo}`;
   } catch (error) {
+    resetScrapeProgress();
     statusText.textContent = `Erreur scraping: ${error.message}`;
   } finally {
     scrapeButton.disabled = false;

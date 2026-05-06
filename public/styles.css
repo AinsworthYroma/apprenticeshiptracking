@@ -421,6 +421,45 @@ button:disabled { opacity: 0.38; cursor: default; }
   color: var(--text-mid); min-height: 1.4em;
 }
 
+/* ── Barre de progression scraping ───────────────────────── */
+.scrape-progress {
+  position: relative;
+  height: 6px;
+  background: var(--border);
+  border-radius: 99px;
+  margin: 0.55rem 0 0;
+  overflow: hidden;
+}
+
+.scrape-progress.hidden { display: none; }
+
+.scrape-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent), #8aaa8a);
+  transition: width 0.35s ease;
+  box-shadow: 0 0 8px rgba(90,110,90,0.35);
+}
+
+.scrape-progress[data-indeterminate="true"] .scrape-progress-fill {
+  width: 40% !important;
+  animation: scrapeSlide 1.4s ease-in-out infinite;
+}
+
+@keyframes scrapeSlide {
+  0%   { transform: translateX(-120%); }
+  50%  { transform: translateX(200%); }
+  100% { transform: translateX(200%); }
+}
+
+.scrape-progress-label {
+  position: absolute;
+  right: 0; top: -1.5rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
 /* ── Workspace ────────────────────────────────────────────── */
 .workspace {
   position: relative; z-index: 3;

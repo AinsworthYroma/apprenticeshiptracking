@@ -1052,9 +1052,16 @@ app.get('/api/offers', async (req, res) => {
   const deduped = dedupeOffers(results);
 
   // --- Fusion avec le store persistant ---
-  // Sources ayant réussi le scrape (on ne marque indispo que celles-là)
+  // Une source est considérée "fiable" pour marquer indispo seulement si elle a
+  // renvoyé au moins MIN_OFFERS_TO_TRUST offres (évite les faux positifs quand
+  // l'anti-scraping retourne 0 résultat alors que les offres existent encore)
+  const MIN_OFFERS_TO_TRUST = 3;
+  const UNAVAILABLE_GRACE_DAYS = 10; // offres < 10 jours ne sont jamais marquées indispo
+
   const successfulSources = new Set(
-    sourceStatuses.filter((s) => s.status === 'ok').map((s) => s.source)
+    sourceStatuses
+      .filter((s) => s.status === 'ok' && s.fetched >= MIN_OFFERS_TO_TRUST)
+      .map((s) => s.source)
   );
 
   // Index des nouvelles offres par URL (ou clé dedup)
@@ -1079,8 +1086,11 @@ app.get('/api/offers', async (req, res) => {
       mergedMap.set(key, updated);
       freshByKey.delete(key); // ne pas la rajouter en double
     } else if (successfulSources.has(prev.source)) {
-      // Source OK mais offre absente → marquer indisponible
-      if (!prev.unavailable) {
+      // Source fiable et offre absente → marquer indisponible, sauf si offre récente
+      const postedTime = prev.postedAt ? new Date(prev.postedAt).getTime() : NaN;
+      const isRecent = Number.isFinite(postedTime) &&
+        (Date.now() - postedTime) < UNAVAILABLE_GRACE_DAYS * 24 * 60 * 60 * 1000;
+      if (!prev.unavailable && !isRecent) {
         mergedMap.set(key, { ...prev, unavailable: true, unavailableSince: nowIso });
       } else {
         mergedMap.set(key, prev);
