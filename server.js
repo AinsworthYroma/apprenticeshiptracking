@@ -3,6 +3,10 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const path = require('path');
 
+function normalizeText(text) {
+  return (text || '').replace(/\s+/g, ' ').trim();
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -223,10 +227,6 @@ async function httpGetWithRetries(url, config = {}, retries = 3) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeText(text) {
-  return (text || '').replace(/\s+/g, ' ').trim();
 }
 
 function extractCityFromLocation(location, fallbackCity = TARGET_CITY) {
