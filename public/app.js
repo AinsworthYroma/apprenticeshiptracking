@@ -399,7 +399,10 @@ function selectProfile(profile, options = {}) {
     loadAdminCacheInfo();
   }
 
-  statusText.textContent = `Profil actif: ${PROFILE_LABELS[profile]}. Lance une collecte pour ce profil.`;
+  const loadedFromCache = hydrateOffersFromLocalCache(profile);
+  if (!loadedFromCache) {
+    statusText.textContent = `Profil actif: ${PROFILE_LABELS[profile]}. Lance une collecte pour ce profil.`;
+  }
 }
 
 function normalizeCustomUrl(value) {
@@ -1093,6 +1096,26 @@ function loadOffersFromLocalCache(profile, city, start) {
   } catch {
     return null;
   }
+}
+
+function hydrateOffersFromLocalCache(profile) {
+  const city = cityInput.value.trim() || 'Paris';
+  const start = startInput.value.trim() || 'septembre 2026';
+  const cached = loadOffersFromLocalCache(profile, city, start);
+  if (!cached) {
+    return false;
+  }
+
+  state.offers = cached.data.offers || [];
+  state.sourceStatuses = cached.data.sourceStatuses || [];
+  updateFilterOptions();
+  applyOfferFilters();
+  renderSourceStatuses();
+  renderTracking();
+
+  const age = Math.round((Date.now() - cached.savedAt) / 60000);
+  statusText.textContent = `${state.offers.length} offres chargées automatiquement depuis le cache local (il y a ${age} min).`;
+  return true;
 }
 
 function clearOffersLocalCache(profile, city, start) {
