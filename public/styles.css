@@ -629,6 +629,24 @@ body {
   font-weight: 500;
 }
 
+.tracking-note {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.tracking-note:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
 .track-delete {
   padding: 0.4rem 0.75rem;
   background: rgba(239, 68, 68, 0.1);

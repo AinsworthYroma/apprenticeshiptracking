@@ -57,6 +57,12 @@ const OFFERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const TRACKING_STATUSES = ['A contacter', 'Candidature envoyée', 'Entretien', 'Refusée', 'Acceptée'];
 const JOB_TYPES = ['Non défini', 'CDI', 'CDD', 'Stage', 'Alternance', 'VIE'];
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
 function loadJSON(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -435,6 +441,7 @@ function renderTracking() {
                     (t) => `<option value="${t}" ${t === item.jobType ? 'selected' : ''}>${t}</option>`
                   ).join('')}
                 </select>
+                <textarea class="tracking-note" data-offer-id="${offerId}" placeholder="Notes (relance, contact, retour entretien...)" rows="2">${escapeHtml(item.note || '')}</textarea>
                 <button class="track-delete" data-offer-id="${offerId}" type="button">✕</button>
               </div>
             `;
@@ -478,6 +485,18 @@ function renderTracking() {
       removeFromTracking(btn.getAttribute('data-offer-id'));
     });
   });
+
+  // Pas de renderTracking() ici : un re-render sur chaque frappe ferait perdre
+  // le focus/curseur du textarea pendant la saisie.
+  trackingBoard.querySelectorAll('.tracking-note').forEach((textarea) => {
+    textarea.addEventListener('input', (event) => {
+      const offerId = event.target.getAttribute('data-offer-id');
+      const item = state.tracked[offerId];
+      if (!item) return;
+      item.note = event.target.value;
+      saveTracked();
+    });
+  });
 }
 
 // ---- CSV export -------------------------------------------------
@@ -493,7 +512,7 @@ function csvEscape(value) {
 }
 
 function exportTrackingCsv() {
-  const header = ['Titre', 'Entreprise', 'Statut', 'Type de poste', "Date d'ajout", 'Date de candidature', 'Lien'];
+  const header = ['Titre', 'Entreprise', 'Statut', 'Type de poste', "Date d'ajout", 'Date de candidature', 'Lien', 'Notes'];
 
   const rows = Object.entries(state.tracked).map(([offerId, item]) => {
     const offer = state.offers.find((o) => o.id === offerId);
@@ -502,7 +521,7 @@ function exportTrackingCsv() {
     const url = item.url || offer?.url || '';
     const addedAt = item.addedAt ? new Date(item.addedAt).toLocaleDateString('fr-FR') : '';
     const appliedAt = item.appliedAt ? new Date(item.appliedAt).toLocaleDateString('fr-FR') : '';
-    return [title, company, item.status, item.jobType, addedAt, appliedAt, url];
+    return [title, company, item.status, item.jobType, addedAt, appliedAt, url, item.note || ''];
   });
 
   const csvContent = [header, ...rows].map((row) => row.map(csvEscape).join(';')).join('\r\n');

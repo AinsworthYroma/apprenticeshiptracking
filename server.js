@@ -28,6 +28,8 @@ const LINKEDIN_DESCRIPTION_FETCH_MAX = Math.max(
 );
 
 // Secteurs cibles (finance/conseil/banque) pour mieux capter les offres bac+5.
+// Liste volontairement large sur les fonds/banques/grands groupes (sous-representes
+// avant) pour multiplier les requetes de recherche sur toutes les sources.
 const SECTOR_KEYWORDS = [
   { fr: 'finance', en: 'finance' },
   { fr: 'conseil en stratégie', en: 'strategy consulting' },
@@ -42,6 +44,22 @@ const SECTOR_KEYWORDS = [
   { fr: 'fusions acquisitions', en: 'mergers and acquisitions' },
   { fr: 'corporate finance', en: 'corporate finance' },
   { fr: 'grand groupe', en: 'multinational corporation' },
+  { fr: 'capital investissement', en: 'venture capital' },
+  { fr: 'fonds souverain', en: 'sovereign wealth fund' },
+  { fr: 'hedge fund', en: 'hedge fund' },
+  { fr: 'banque privée', en: 'private banking' },
+  { fr: 'banque de détail', en: 'retail banking' },
+  { fr: 'family office', en: 'family office' },
+  { fr: 'gestion de fortune', en: 'wealth management' },
+  { fr: 'salle des marchés', en: 'trading floor' },
+  { fr: 'front office', en: 'front office' },
+  { fr: 'analyste crédit', en: 'credit analyst' },
+  { fr: 'trésorerie', en: 'treasury' },
+  { fr: 'big four', en: 'big four' },
+  { fr: 'cabinet de conseil', en: 'consulting firm' },
+  { fr: 'multinationale', en: 'multinational company' },
+  { fr: 'groupe international', en: 'international group' },
+  { fr: 'LBO', en: 'leveraged buyout' },
 ];
 const SECTOR_MATCH_REGEX = new RegExp(
   SECTOR_KEYWORDS.flatMap(({ fr, en }) => [fr, en])
@@ -615,12 +633,31 @@ async function scrapeLinkedIn(city) {
   return sectorMatches.map((entry) => buildOffer(entry));
 }
 
+// Le domaine générique "www.talent.com" géolocalise "Paris" sur Paris, TEXAS
+// (le site est piloté par pays via des sous-domaines) : "fr.talent.com" est le
+// site français dédié et résout "Paris" correctement sur Paris, France.
+const TALENT_COM_BASE = 'https://fr.talent.com';
+
+// Filet de sécurité : si un résultat passe quand même avec une localisation
+// US (état américain, "United States", etc.), on l'exclut plutot que de
+// risquer d'afficher a nouveau des offres a Paris, Texas comme avant.
+const US_STATE_CODES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA',
+  'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT',
+  'VA', 'WA', 'WV', 'WI', 'WY',
+];
+const US_LOCATION_REGEX = new RegExp(
+  `United States|USA|U\\.S\\.A\\.?|,\\s*(?:${US_STATE_CODES.join('|')})\\b`,
+  'i'
+);
+
 async function scrapeTalentCom() {
   // Talent.com n'a pas de recherche multi-mots-clefs comme LinkedIn : on lance
   // une recherche par terme sectoriel (finance/banque/private equity/fonds/...)
   // sur plusieurs pages, pour avoir bien plus de volume qu'une seule requete
   // generique "CDI Paris" une fois le filtre sectoriel applique.
-  const pages = [1, 2, 3];
+  const pages = [1, 2, 3, 4, 5];
   const allOffers = [];
   const seenUrls = new Set();
 
@@ -633,7 +670,7 @@ async function scrapeTalentCom() {
 
   await Promise.allSettled(
     requests.map(async ({ term, page }) => {
-      const response = await axios.get('https://www.talent.com/fr/jobs', {
+      const response = await axios.get(`${TALENT_COM_BASE}/jobs`, {
         params: { k: `CDI ${term}`, l: 'Paris', p: page },
         headers: {
           'User-Agent': USER_AGENT,
@@ -648,9 +685,9 @@ async function scrapeTalentCom() {
         const company = normalizeText($('[class*="JobCard_company"]', node).text());
         const location = normalizeText($('[class*="JobCard_location"]', node).text());
         const href = $('a', node).first().attr('href') || '';
-        const url = href.startsWith('http') ? href : href ? `https://www.talent.com${href}` : '';
+        const url = href.startsWith('http') ? href : href ? `${TALENT_COM_BASE}${href}` : '';
 
-        if (title && url && !seenUrls.has(url)) {
+        if (title && url && !seenUrls.has(url) && !US_LOCATION_REGEX.test(location)) {
           seenUrls.add(url);
           allOffers.push(
             buildOffer({
