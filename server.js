@@ -921,7 +921,14 @@ async function runScrapeJob(cacheKey, city) {
     })
   );
 
-  const deduped = dedupeOffers(results);
+  // Jobijoba/Talent.com sont interrogés avec une requête generique ("CDI Paris")
+  // qui remonte tous les secteurs (y compris santé, etc.) : on ne garde que les
+  // offres qui matchent réellement finance/conseil/banque/stratégie.
+  const sectorFiltered = results.filter((offer) =>
+    SECTOR_MATCH_REGEX.test(`${offer.title} ${offer.company} ${offer.description || ''}`)
+  );
+
+  const deduped = dedupeOffers(sectorFiltered);
 
   // --- Fusion avec le store persistant ---
   // Une source est considérée "fiable" pour marquer indispo seulement si elle a
@@ -942,8 +949,11 @@ async function runScrapeJob(cacheKey, city) {
   }
   const freshByKey = new Map(deduped.map((o) => [offerKey(o), o]));
 
-  // Récupérer le store persistant pour cette clé de cache
-  const previousOffer = persistentOffersStore.get(cacheKey) || [];
+  // Récupérer le store persistant pour cette clé de cache (on purge au passage les
+  // offres hors-secteur qui auraient pu y être ajoutées avant ce filtre)
+  const previousOffer = (persistentOffersStore.get(cacheKey) || []).filter((offer) =>
+    SECTOR_MATCH_REGEX.test(`${offer.title} ${offer.company} ${offer.description || ''}`)
+  );
 
   // Mettre à jour ou conserver les offres précédentes
   const nowIso = new Date().toISOString();
