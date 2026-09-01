@@ -3,135 +3,72 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cap Alternance Paris 2026</title>
+    <title>Job Tracker - Recherche & Suivi</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.css">
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="profileGate" class="profile-gate">
-      <div class="profile-gate-bg" aria-hidden="true"></div>
-      <div class="profile-gate-card">
-        <div class="gate-logo" aria-hidden="true">◈</div>
-        <div id="profileChoiceView" class="profile-choice-view">
-          <h2>Quel espace ?</h2>
-          <p>Selectionne ton profil pour acceder a ta session.</p>
-          <div class="profile-gate-actions">
-            <button type="button" data-profile-choice="copine">Célest</button>
-            <button type="button" data-profile-choice="admin">Admin</button>
-          </div>
-        </div>
-        <div id="profileLoginView" class="profile-login-view hidden">
-          <div class="login-lock-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          </div>
-          <h2 id="profileLoginTitle">Connexion</h2>
-          <p class="login-subtitle">Entre ton mot de passe pour accéder.</p>
-          <form id="profileLoginForm" class="login-form">
-            <div class="login-field">
-              <input id="profileLoginPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
-              <button type="button" class="login-toggle-pwd" aria-label="Afficher le mot de passe" tabindex="-1">
-                <svg class="eye-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                <svg class="eye-hide hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-              </button>
-            </div>
-            <div id="profileLoginError" class="login-error hidden"></div>
-            <div class="login-actions">
-              <button type="submit" class="login-btn-submit">Valider</button>
-              <button type="button" id="profileLoginBackButton" class="login-btn-back">← Retour</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-
-    <div id="profileIntro" class="profile-intro hidden" aria-live="polite">
-      <div class="profile-intro-card">
-        <div class="intro-stars" aria-hidden="true"></div>
-        <p class="intro-small">Bienvenue</p>
-        <h2>Bonjour Célest</h2>
-        <p>Ton espace se charge...</p>
-      </div>
-      <div class="intro-launch-layer" aria-hidden="true">
-        <div class="intro-rocket"></div>
-      </div>
-    </div>
-
     <header class="hero">
       <div class="hero-top">
         <div class="hero-brand">
-          <span class="brand-icon" aria-hidden="true">◈</span>
-          <span class="brand-name">Cap Alternance <span class="brand-year">2026</span></span>
-        </div>
-        <div class="profile-indicator">
-          <span class="profile-label">Profil&nbsp;<strong id="activeProfileLabel">—</strong></span>
-          <button id="switchProfileButton" type="button">Changer</button>
+          <span>Job Tracker</span>
         </div>
       </div>
       <div class="hero-headline">
-        <p class="eyebrow">Paris · Septembre 2026 · Multi-sources</p>
-        <h1>Trouvez votre alternance</h1>
-        <p class="hero-note">Une interface de prospection plus selecte, plus claire, plus precise.</p>
+        <p class="eyebrow">Recherche · Suivi · Analytics</p>
+        <h1>Trouvez votre poste</h1>
+        <p class="hero-note">Plateforme complète de recherche, suivi et analyse de vos candidatures.</p>
       </div>
       <div class="search-controls">
-        <input id="cityInput" type="text" value="Paris" />
-        <input id="startInput" type="text" value="septembre 2026" />
-        <button id="scrapeButton">Lancer le scraping</button>
-        <button id="refreshButton" title="Ignorer le cache et relancer le scraping complet">&#x21BA; Rafraichir</button>
+        <input id="cityInput" type="text" value="Paris" placeholder="Ville" />
+        <input id="startInput" type="text" placeholder="Disponibilité (optionnel)" />
+        <button id="scrapeButton">Lancer la recherche</button>
+        <button id="refreshButton" title="Ignorer le cache et relancer">↻ Rafraichir</button>
       </div>
       <div class="filters-row">
-        <input id="keywordFilter" type="text" placeholder="Recherche mot-cle (poste, entreprise, competences...)" />
+        <input id="keywordFilter" type="text" placeholder="Mots-clés..." />
+        <select id="contractTypeFilter">
+          <option value="">Type de contrat</option>
+          <option value="cdi">CDI</option>
+          <option value="cdd">CDD</option>
+          <option value="stage">Stage</option>
+          <option value="alternance">Alternance</option>
+          <option value="vie">VIE</option>
+        </select>
         <select id="locationFilter">
-          <option value="">Toutes les localisations</option>
+          <option value="">Localisation</option>
         </select>
-        <select id="companySizeFilter">
-          <option value="">Toutes les tailles d'entreprise</option>
-        </select>
-        <select id="studyLevelFilter">
-          <option value="">Tous les niveaux d'etude</option>
-        </select>
+        <div id="sourceFilter" class="source-filter-group"></div>
         <label class="toggle-filter">
           <input type="checkbox" id="unseenOnlyFilter" />
-          Offres non traitees seulement
+          Non vues
         </label>
       </div>
-      <p id="statusText" class="status">Pret a collecter des offres.</p>
-      <div id="scrapeProgressBar" class="scrape-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-        <div id="scrapeProgressFill" class="scrape-progress-fill"></div>
-        <span id="scrapeProgressLabel" class="scrape-progress-label"></span>
+      <p id="statusText" class="status">Prêt à rechercher des postes.</p>
+      <div id="scrapeProgressBar" class="scrape-progress hidden">
+        <div class="spinner"></div>
+        <span id="scrapeProgressLabel">Recherche en cours...</span>
       </div>
     </header>
 
     <main class="workspace">
       <nav class="tabs">
-        <button id="offersTabButton" class="tab-button active" data-tab="offers">Offres & Candidatures</button>
-        <button id="trackingTabButton" class="tab-button" data-tab="tracking">Suivi des candidatures</button>
-        <button id="adminTabButton" class="tab-button hidden" data-tab="admin">Admin - Cache serveur</button>
+        <button id="offersTabButton" class="tab-button active" data-tab="offers">Offres</button>
+        <button id="trackingTabButton" class="tab-button" data-tab="tracking">Suivi</button>
+        <button id="dashboardTabButton" class="tab-button" data-tab="dashboard">Dashboard</button>
       </nav>
 
       <section id="offersTab" class="tab-pane active">
         <div class="layout">
           <section class="panel offers-panel">
             <div class="panel-header">
-              <h2>Offres</h2>
+              <h2>Offres d'emploi</h2>
               <div class="offers-header-actions">
                 <span id="offerCount" class="count-badge">0</span>
-                <button id="mobileOffersToggle" class="mobile-offers-toggle" type="button" aria-expanded="false">
-                  Voir les offres
-                </button>
               </div>
             </div>
-            <div id="offerMap" class="offer-map" aria-label="Carte des offres sur Paris"></div>
             <div id="offerList" class="offer-list"></div>
           </section>
 
@@ -139,12 +76,12 @@
             <section class="panel profile-panel">
               <h3 class="panel-section-title">Votre profil</h3>
               <form id="profileForm" class="profile-form">
-                <input name="firstName" placeholder="Prenom" required />
+                <input name="firstName" placeholder="Prénom" required />
                 <input name="lastName" placeholder="Nom" required />
-                <input name="formation" placeholder="Formation (ex: Master Marketing Digital)" required />
-                <input name="skills" placeholder="Competences cles (SEO, Excel, SQL...)" required />
+                <input name="formation" placeholder="Formation" required />
+                <input name="skills" placeholder="Compétences clés" required />
                 <input name="email" type="email" placeholder="Email" required />
-                <input name="phone" placeholder="Telephone" required />
+                <input name="phone" placeholder="Téléphone" required />
               </form>
               <h3 class="panel-section-title" style="margin-top:1.2rem">Sources</h3>
               <div id="sourceStatusList" class="source-status-list"></div>
@@ -152,7 +89,7 @@
 
             <section class="panel templates-panel">
               <h3 class="panel-section-title">Templates</h3>
-              <p class="template-hint">Clique sur une offre pour generer lettre + accroche LinkedIn.</p>
+              <p class="template-hint">Cliquez sur une offre pour générer les templates.</p>
               <label for="coverLetterOutput">Lettre de motivation</label>
               <textarea id="coverLetterOutput" rows="10" readonly></textarea>
               <label for="linkedinOutput">Accroche LinkedIn</label>
@@ -163,126 +100,74 @@
       </section>
 
       <section id="trackingTab" class="tab-pane">
-        <section class="panel tracking-panel">
-          <div class="panel-header">
-            <h2>Pipeline de candidatures</h2>
-            <span id="trackingCount">0 candidature</span>
-          </div>
-          <div id="trackingBoard" class="tracking-columns"></div>
-        </section>
+        <div class="layout-full">
+          <section class="panel tracking-panel">
+            <div class="panel-header">
+              <h2>Suivi des candidatures</h2>
+              <div class="tracking-header-actions">
+                <span id="trackingCount">0 candidature</span>
+                <button id="exportCsvButton" type="button" class="btn btn-secondary">⬇ Export CSV</button>
+                <button id="addManualButton" type="button" class="btn btn-primary">+ Ajouter manuellement</button>
+              </div>
+            </div>
+            <form id="manualAddForm" class="manual-add-form hidden">
+              <input name="title" placeholder="Intitulé du poste" required />
+              <input name="company" placeholder="Entreprise" />
+              <input name="url" type="url" placeholder="Lien de l'offre" />
+              <select name="jobType">
+                <option value="Non défini">Non défini</option>
+                <option value="CDI">CDI</option>
+                <option value="CDD">CDD</option>
+                <option value="Stage">Stage</option>
+                <option value="Alternance">Alternance</option>
+                <option value="VIE">VIE</option>
+              </select>
+              <div class="manual-add-form-actions">
+                <button type="submit" class="btn btn-primary">Ajouter</button>
+                <button type="button" id="cancelManualAdd" class="btn btn-secondary">Annuler</button>
+              </div>
+            </form>
+            <div id="trackingBoard" class="tracking-columns"></div>
+          </section>
+        </div>
       </section>
 
-      <section id="adminTab" class="tab-pane">
-        <section class="panel admin-cache-panel">
-          <div class="panel-header">
-            <h2>Observabilite cache serveur</h2>
-            <span id="cacheInfoUpdatedAt" class="count-badge">--</span>
+      <section id="dashboardTab" class="tab-pane">
+        <div class="dashboard-grid">
+          <div class="stat-card">
+            <div class="stat-label">Offres trouvées</div>
+            <div class="stat-value" id="dashTotalOffers">0</div>
           </div>
 
-          <div id="adminCacheGuard" class="admin-cache-guard">Cet onglet est reserve au profil Admin.</div>
-
-          <div id="adminCacheContent" class="admin-cache-content hidden">
-            <div class="admin-cache-summary-grid">
-              <article class="admin-metric-card">
-                <h3>Total cache runtime</h3>
-                <strong id="metricRuntimeTotal">0</strong>
-              </article>
-              <article class="admin-metric-card">
-                <h3>Total cache persistant</h3>
-                <strong id="metricPersistentTotal">0</strong>
-              </article>
-              <article class="admin-metric-card">
-                <h3>Mentions offres vues</h3>
-                <strong id="metricViewedMentions">0</strong>
-              </article>
-              <article class="admin-metric-card">
-                <h3>Mentions offres pipeline</h3>
-                <strong id="metricPipelineMentions">0</strong>
-              </article>
-            </div>
-
-            <div id="adminAccountStats" class="admin-account-stats"></div>
-
-            <div class="admin-cache-actions">
-              <article class="admin-action-card">
-                <h3>Effacer par compte</h3>
-                <p>Supprime un compte cible avec un type de cache precis.</p>
-                <label for="adminAccountTarget">Compte cible</label>
-                <select id="adminAccountTarget">
-                  <option value="admin">Admin</option>
-                  <option value="copine">Célest</option>
-                </select>
-                <label for="adminAccountCacheType">Type de cache</label>
-                <select id="adminAccountCacheType">
-                  <option value="all">Tous</option>
-                  <option value="ttl">Runtime (memoire)</option>
-                  <option value="persistent">Persistant (historique)</option>
-                </select>
-                <button id="clearByAccountButton" type="button">Effacer ce compte</button>
-              </article>
-
-              <article class="admin-action-card">
-                <h3>Effacer par type</h3>
-                <p>Supprime un type de cache pour tous les comptes serveur.</p>
-                <label for="adminTypeCacheType">Type de cache</label>
-                <select id="adminTypeCacheType">
-                  <option value="ttl">Runtime (memoire)</option>
-                  <option value="persistent">Persistant (historique)</option>
-                  <option value="all">Tous</option>
-                </select>
-                <button id="clearByTypeButton" type="button">Effacer ce type</button>
-              </article>
-
-              <article class="admin-action-card">
-                <h3>Effacer les mentions vues</h3>
-                <p>Supprime les mentions offres vues pour le compte choisi.</p>
-                <label for="adminViewedTarget">Compte cible</label>
-                <select id="adminViewedTarget">
-                  <option value="admin">Admin</option>
-                  <option value="copine">Célest</option>
-                </select>
-                <button id="clearAllViewedButton" type="button">Effacer les mentions vues</button>
-              </article>
-
-              <article class="admin-action-card admin-danger-card">
-                <h3>Effacer les vues des 2 comptes</h3>
-                <p>Supprime toutes les mentions vues pour Admin et Célest (mot de passe requis).</p>
-                <button id="clearViewedBothButton" type="button">Effacer les vues des 2 comptes</button>
-              </article>
-
-              <article class="admin-action-card admin-danger-card">
-                <h3>Effacer tout le serveur</h3>
-                <p>Vide tous les caches serveur (runtime + persistant, tous comptes).</p>
-                <button id="clearAllServerCacheButton" type="button">Effacer tous les caches serveur</button>
-              </article>
-            </div>
-
-            <div class="admin-password-box">
-              <p class="admin-password-note">
-                Mot de passe Celextime exige pour les actions sur le compte Célest et la purge complete serveur.
-              </p>
-              <label for="celextimePassword">Mot de passe Celextime</label>
-              <input id="celextimePassword" type="password" autocomplete="off" placeholder="Saisir le mot de passe" />
-              <label for="celextimePasswordConfirm">Confirmer le mot de passe</label>
-              <input
-                id="celextimePasswordConfirm"
-                type="password"
-                autocomplete="off"
-                placeholder="Saisir a nouveau le mot de passe"
-              />
-            </div>
-
-            <p id="adminCacheStatus" class="status">Chargement des infos cache...</p>
+          <div class="stat-card">
+            <div class="stat-label">Candidatures</div>
+            <div class="stat-value" id="dashTotalApplications">0</div>
           </div>
-        </section>
+
+          <div class="stat-card">
+            <div class="stat-label">Taux de candidature</div>
+            <div class="stat-value" id="dashApplicationRate">0%</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Aujourd'hui</div>
+            <div class="stat-value" id="dashTodayApplications">0</div>
+          </div>
+
+          <div class="panel panel-chart">
+            <h3 class="panel-section-title">Candidatures par jour</h3>
+            <canvas id="applicationsChart"></canvas>
+          </div>
+
+          <div class="panel panel-chart">
+            <h3 class="panel-section-title">Par type de poste</h3>
+            <canvas id="typeChart"></canvas>
+          </div>
+        </div>
       </section>
     </main>
 
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

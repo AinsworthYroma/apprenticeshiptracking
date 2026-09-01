@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const path = require('path');
+const fs = require('fs');
 
 function normalizeText(text) {
   return (text || '').replace(/\s+/g, ' ').trim();
@@ -14,18 +15,31 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const TARGET_CITY = 'Paris';
-const TARGET_START = 'septembre 2026';
-const LBA_API_BASE = 'https://labonnealternance.apprentissage.beta.gouv.fr/api';
 
 const USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const LINKEDIN_MAX_PAGES = Math.max(1, parseInt(process.env.LINKEDIN_MAX_PAGES || '180', 10));
 const LINKEDIN_BATCH_SIZE = Math.max(1, parseInt(process.env.LINKEDIN_BATCH_SIZE || '8', 10));
-const WTTJ_MAX_SCAN_PAGES = Math.max(1, parseInt(process.env.WTTJ_MAX_SCAN_PAGES || '180', 10));
-const WTTJ_SECONDARY_SCAN_PAGES = Math.max(
-  1,
-  parseInt(process.env.WTTJ_SECONDARY_SCAN_PAGES || '60', 10)
+const LINKEDIN_DESCRIPTION_FETCH_MAX = Math.max(
+  0,
+  parseInt(process.env.LINKEDIN_DESCRIPTION_FETCH_MAX || '80', 10)
+);
+
+// Secteurs cibles (finance/conseil/banque) pour mieux capter les offres bac+5.
+const SECTOR_KEYWORDS = [
+  { fr: 'finance', en: 'finance' },
+  { fr: 'conseil en stratégie', en: 'strategy consulting' },
+  { fr: 'conseil en management', en: 'management consulting' },
+  { fr: 'banque', en: 'banking' },
+  { fr: 'financement', en: 'financing' },
+  { fr: 'fund finance', en: 'fund finance' },
+];
+const SECTOR_MATCH_REGEX = new RegExp(
+  SECTOR_KEYWORDS.flatMap(({ fr, en }) => [fr, en])
+    .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|'),
+  'i'
 );
 const DEFAULT_CELEXTIME_ADMIN_PASSWORD = 'Celextime1';
 const CELEXTIME_ADMIN_PASSWORD = normalizeText(
@@ -52,6 +66,46 @@ const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 heures par défaut
 const offersCache = new Map();
 // Store persistant : conserve toutes les offres déjà vues, par cacheKey
 const persistentOffersStore = new Map();
+
+// ---------------------------------------------------------------------------
+// Persistance disque du cache : le cache vivait uniquement en mémoire, donc
+// il disparaissait a chaque redemarrage du serveur et n'existait que pour le
+// process en cours. En l'ecrivant sur disque dans le codespace, tous les
+// appareils qui tapent sur le port forwarde du codespace voient les memes
+// offres deja recuperees, et un redemarrage ne force pas un re-scraping complet.
+const CACHE_DATA_DIR = path.join(__dirname, 'data');
+const CACHE_FILE_PATH = path.join(CACHE_DATA_DIR, 'jobs-cache.json');
+
+function loadCacheFromDisk() {
+  try {
+    const raw = fs.readFileSync(CACHE_FILE_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    (parsed.offersCache || []).forEach(([key, value]) => offersCache.set(key, value));
+    (parsed.persistentOffersStore || []).forEach(([key, value]) => persistentOffersStore.set(key, value));
+    console.log(
+      `Cache charge depuis le disque: ${offersCache.size} entrees TTL, ${persistentOffersStore.size} entrees persistantes.`
+    );
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn(`Impossible de charger le cache disque (${CACHE_FILE_PATH}): ${error.message}`);
+    }
+  }
+}
+
+function persistCacheToDisk() {
+  try {
+    fs.mkdirSync(CACHE_DATA_DIR, { recursive: true });
+    const payload = {
+      offersCache: Array.from(offersCache.entries()),
+      persistentOffersStore: Array.from(persistentOffersStore.entries()),
+    };
+    fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify(payload));
+  } catch (error) {
+    console.warn(`Impossible d'ecrire le cache disque (${CACHE_FILE_PATH}): ${error.message}`);
+  }
+}
+
+loadCacheFromDisk();
 
 const KNOWN_PROFILES = new Set(['admin', 'copine']);
 
@@ -129,6 +183,7 @@ function clearCachesForAccount(account, cacheType) {
     }
   }
 
+  persistCacheToDisk();
   return { cacheEntriesCleared, persistentEntriesCleared };
 }
 
@@ -147,6 +202,7 @@ function clearCachesByType(cacheType) {
     persistentOffersStore.clear();
   }
 
+  persistCacheToDisk();
   return { cacheEntriesCleared, persistentEntriesCleared };
 }
 
@@ -301,40 +357,6 @@ function normalizeStudyLevelCategory(level, contextText = '') {
   return 'Non precise';
 }
 
-function resolveInseeFromCity(city) {
-  const normalizedCity = normalizeText(city).toLowerCase();
-  const mapping = {
-    paris: '75056',
-  };
-  return mapping[normalizedCity] || '75056';
-}
-
-function findBestUrl(item) {
-  const candidates = [
-    item?.offer?.url,
-    item?.offer?.originUrl,
-    item?.offer?.publicUrl,
-    item?.offer?.applyUrl,
-    item?.apply?.url,
-    item?.contact?.url,
-    item?.origin?.url,
-    item?.url,
-  ]
-    .map((value) => (typeof value === 'string' ? normalizeText(value) : ''))
-    .filter(Boolean);
-
-  for (const candidate of candidates) {
-    if (!isLikelyDeadUrl(candidate)) {
-      return candidate;
-    }
-  }
-
-  return (
-    candidates[0] ||
-    'https://labonnealternance.apprentissage.beta.gouv.fr/'
-  );
-}
-
 function buildOffer(partial) {
   const location = normalizeText(partial.location);
   const city = normalizeText(partial.city || extractCityFromLocation(location));
@@ -368,23 +390,16 @@ function buildOffer(partial) {
     source: partial.source,
     description: normalizedDescription,
     postedAt: partial.postedAt || null,
-    contractType: partial.contractType || 'Alternance',
+    contractType: partial.contractType || 'Non précisé',
     cityMatch: /paris/i.test(`${location} ${city}`),
-    startMatch: /sept(embre)?\s*2026/i.test(`${partial.title} ${partial.description || ''}`),
   };
 }
 
 function buildSourceSearchUrl({ source, title, company, city }) {
-  const q = encodeURIComponent(`${title || ''} ${company || ''} ${city || ''} alternance`.trim());
+  const q = encodeURIComponent(`${title || ''} ${company || ''} ${city || ''}`.trim());
 
-  if ((source || '').startsWith('La Bonne Alternance')) {
-    return `https://labonnealternance.apprentissage.beta.gouv.fr/recherche-apprentissage?job_name=${q}`;
-  }
-  if ((source || '').includes('Welcome to the Jungle')) {
-    return `https://www.welcometothejungle.com/fr/jobs?query=${q}`;
-  }
   if ((source || '').includes('Jobijoba')) {
-    return `https://www.jobijoba.com/fr/emploi/${encodeURIComponent(`${title || 'Alternance'} ${city || 'Paris'}`)}`;
+    return `https://www.jobijoba.com/fr/emploi/${encodeURIComponent(`${title || 'Emploi'} ${city || 'Paris'}`)}`;
   }
   if ((source || '').includes('LinkedIn')) {
     return `https://www.linkedin.com/jobs/search/?keywords=${q}`;
@@ -408,17 +423,8 @@ function isLikelyDeadUrl(url) {
   }
 
   try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.toLowerCase();
-    const pathname = parsed.pathname;
-
-    // Some sources send only the platform homepage, which is not a real offer link.
-    if (
-      hostname.includes('labonnealternance.apprentissage.beta.gouv.fr') &&
-      (pathname === '/' || pathname === '')
-    ) {
-      return true;
-    }
+    // eslint-disable-next-line no-new
+    new URL(url);
   } catch (error) {
     return true;
   }
@@ -426,13 +432,33 @@ function isLikelyDeadUrl(url) {
   return false;
 }
 
+function extractLinkedInJobId(url) {
+  const clean = (url || '').split('?')[0];
+  const match = clean.match(/(\d{6,})\/?$/);
+  return match ? match[1] : null;
+}
+
+async function fetchLinkedInDescription(url) {
+  const jobId = extractLinkedInJobId(url);
+  if (!jobId) {
+    return '';
+  }
+  try {
+    const response = await httpGetWithRetries(
+      `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`,
+      { headers: { 'User-Agent': USER_AGENT }, timeout: 15000 },
+      2
+    );
+    const $ = cheerio.load(response.data || '');
+    return normalizeText($('.description__text').text());
+  } catch (error) {
+    return '';
+  }
+}
+
 async function scrapeLinkedIn(city) {
   // LinkedIn guest API avec plans multiples pour maximiser le volume utile.
   const primaryOffsets = Array.from({ length: LINKEDIN_MAX_PAGES }, (_, i) => i * 25);
-  const secondaryOffsets = Array.from(
-    { length: Math.min(80, LINKEDIN_MAX_PAGES) },
-    (_, i) => i * 25
-  );
   const tertiaryOffsets = Array.from(
     { length: Math.min(35, LINKEDIN_MAX_PAGES) },
     (_, i) => i * 25
@@ -440,19 +466,17 @@ async function scrapeLinkedIn(city) {
   const cityText = normalizeText(city || TARGET_CITY) || TARGET_CITY;
   const regionHint = /paris/i.test(cityText) ? 'Ile-de-France' : 'France';
   const broaderLocation = /paris/i.test(cityText) ? 'Ile-de-France, France' : 'France';
+  const sectorPlans = SECTOR_KEYWORDS.flatMap(({ fr, en }) => [
+    { keywords: `CDI ${fr}`, location: `${cityText}, ${regionHint}`, offsets: tertiaryOffsets },
+    { keywords: `full-time ${en}`, location: broaderLocation, offsets: tertiaryOffsets },
+  ]);
   const searchPlans = [
-    { keywords: 'alternance', location: `${cityText}, ${regionHint}`, offsets: primaryOffsets },
-    { keywords: 'apprentissage', location: `${cityText}, ${regionHint}`, offsets: secondaryOffsets },
-    { keywords: 'alternance', location: cityText, offsets: secondaryOffsets },
-    { keywords: 'alternant', location: `${cityText}, ${regionHint}`, offsets: secondaryOffsets },
-    { keywords: 'alternance', location: broaderLocation, offsets: secondaryOffsets },
-    { keywords: 'contrat professionnalisation', location: `${cityText}, ${regionHint}`, offsets: tertiaryOffsets },
-    { keywords: 'work-study', location: broaderLocation, offsets: tertiaryOffsets },
-    { keywords: 'apprenticeship', location: broaderLocation, offsets: tertiaryOffsets },
-    { keywords: 'alternance marketing', location: `${cityText}, ${regionHint}`, offsets: tertiaryOffsets },
-    { keywords: 'alternance data', location: `${cityText}, ${regionHint}`, offsets: tertiaryOffsets },
+    { keywords: 'CDI finance', location: `${cityText}, ${regionHint}`, offsets: primaryOffsets },
+    { keywords: 'CDI banque', location: `${cityText}, ${regionHint}`, offsets: primaryOffsets },
+    { keywords: 'CDI conseil', location: `${cityText}, ${regionHint}`, offsets: primaryOffsets },
+    ...sectorPlans,
   ];
-  const offers = [];
+  const rawEntries = [];
   const seenUrls = new Set();
   const allRequests = [];
   const seenRequestKeys = new Set();
@@ -505,17 +529,15 @@ async function scrapeLinkedIn(city) {
         const url = href.split('?')[0];
         if (title && url && !seenUrls.has(url)) {
           seenUrls.add(url);
-          offers.push(
-            buildOffer({
-              id: `linkedin-${item.keywords}-${item.start}-${index}`,
-              title,
-              company,
-              location,
-              city: extractCityFromLocation(location, cityText),
-              url,
-              source: 'LinkedIn',
-            })
-          );
+          rawEntries.push({
+            id: `linkedin-${item.keywords}-${item.start}-${index}`,
+            title,
+            company,
+            location,
+            city: extractCityFromLocation(location, cityText),
+            url,
+            source: 'LinkedIn',
+          });
         }
       });
     });
@@ -524,7 +546,26 @@ async function scrapeLinkedIn(city) {
     await sleep(140);
   }
 
-  return offers;
+  // Pour les offres finance/conseil/banque, on va chercher la description complete
+  // sur la page de l'offre (les cartes de recherche ne donnent que titre/entreprise/lieu),
+  // ce qui permet a normalizeStudyLevelCategory de bien détecter les postes bac+5.
+  const sectorMatches = rawEntries.filter((entry) =>
+    SECTOR_MATCH_REGEX.test(`${entry.title} ${entry.company}`)
+  );
+  const toFetch = sectorMatches.slice(0, LINKEDIN_DESCRIPTION_FETCH_MAX);
+
+  for (let i = 0; i < toFetch.length; i += LINKEDIN_BATCH_SIZE) {
+    const batch = toFetch.slice(i, i + LINKEDIN_BATCH_SIZE);
+    const descriptions = await Promise.allSettled(batch.map((entry) => fetchLinkedInDescription(entry.url)));
+    descriptions.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value) {
+        batch[index].description = result.value;
+      }
+    });
+    await sleep(200);
+  }
+
+  return sectorMatches.map((entry) => buildOffer(entry));
 }
 
 async function scrapeTalentCom() {
@@ -535,7 +576,7 @@ async function scrapeTalentCom() {
   await Promise.allSettled(
     pages.map(async (page) => {
       const response = await axios.get('https://www.talent.com/fr/jobs', {
-        params: { k: 'alternance', l: 'Paris', p: page },
+        params: { k: 'CDI', l: 'Paris', p: page },
         headers: {
           'User-Agent': USER_AGENT,
           'Accept-Language': 'fr-FR,fr;q=0.9',
@@ -573,355 +614,8 @@ async function scrapeTalentCom() {
   return allOffers;
 }
 
-async function scrapeWelcomeToTheJungle() {
-  const scanPlans = [
-    {
-      base:
-        'https://www.welcometothejungle.com/fr/jobs?aroundLatLng=48.85718%2C2.34141&aroundQuery=Paris%2C%20France&aroundRadius=40&refinementList%5Bcontract_type%5D%5B%5D=apprenticeship&refinementList%5Boffices.country_code%5D%5B%5D=FR&aroundPrecision=5',
-      maxPages: WTTJ_MAX_SCAN_PAGES,
-    },
-    {
-      base:
-        'https://www.welcometothejungle.com/fr/jobs?query=alternance&aroundLatLng=48.85718%2C2.34141&aroundQuery=Paris%2C%20France&aroundRadius=80&refinementList%5Boffices.country_code%5D%5B%5D=FR&aroundPrecision=5',
-      maxPages: Math.min(WTTJ_SECONDARY_SCAN_PAGES, WTTJ_MAX_SCAN_PAGES),
-    },
-    {
-      base:
-        'https://www.welcometothejungle.com/fr/jobs?query=apprentissage&aroundLatLng=48.85718%2C2.34141&aroundQuery=Paris%2C%20France&aroundRadius=80&refinementList%5Boffices.country_code%5D%5B%5D=FR&aroundPrecision=5',
-      maxPages: Math.min(WTTJ_SECONDARY_SCAN_PAGES, WTTJ_MAX_SCAN_PAGES),
-    },
-  ];
-
-  const seedUrls = [
-    'https://www.welcometothejungle.com/fr/pages/emploi-alternance-paris',
-    ...scanPlans.map((plan) => plan.base),
-  ];
-  const scanUrls = [...seedUrls];
-  const seenScanUrls = new Set(scanUrls);
-
-  const appendUrl = (url) => {
-    if (!url || seenScanUrls.has(url)) {
-      return;
-    }
-    seenScanUrls.add(url);
-    scanUrls.push(url);
-  };
-
-  scanPlans.forEach((plan) => {
-    for (let p = 2; p <= plan.maxPages; p += 1) {
-      appendUrl(`${plan.base}&page=${p}`);
-    }
-  });
-
-  const offers = [];
-  const seenUrls = new Set();
-  const companySlugs = new Set();
-
-  function addOfferFromHref(href, title, company, location) {
-    if (!href) {
-      return;
-    }
-    const absoluteUrl = href.startsWith('http')
-      ? href
-      : `https://www.welcometothejungle.com${href}`;
-    if (seenUrls.has(absoluteUrl)) {
-      return;
-    }
-    seenUrls.add(absoluteUrl);
-
-    offers.push(
-      buildOffer({
-        id: `wttj-${seenUrls.size}`,
-        title: title || 'Alternance',
-        company: company || 'Entreprise non specifiee',
-        location: location || 'Paris',
-        url: absoluteUrl,
-        source: 'Welcome to the Jungle',
-      })
-    );
-
-    const cleanParts = absoluteUrl
-      .replace(/^https?:\/\/www\.welcometothejungle\.com/, '')
-      .split('/')
-      .filter(Boolean);
-    if (cleanParts[0] === 'fr' && cleanParts[1] === 'companies' && cleanParts[2]) {
-      companySlugs.add(cleanParts[2]);
-    }
-  }
-
-  function harvestFromHtml(html) {
-    const $ = cheerio.load(html || '');
-
-    $('a[href*="/fr/companies/"][href*="/jobs/"]').each((index, node) => {
-      const card = $(node);
-      const href = card.attr('href');
-      const parts = (href || '').split('/').filter(Boolean);
-      const companySlug = parts[2] || '';
-      const jobSlug = parts[4] || '';
-
-      const titleFromDom =
-        normalizeText(card.find('h2, h3, h4').first().text()) ||
-        normalizeText(card.attr('title'));
-      const titleFromSlug = decodeURIComponent(jobSlug)
-        .replace(/[-_]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      addOfferFromHref(
-        href,
-        titleFromDom || titleFromSlug || 'Alternance',
-        decodeURIComponent(companySlug).replace(/[-_]+/g, ' ') || 'Entreprise non specifiee',
-        'Paris'
-      );
-    });
-
-    const patterns = [
-      /\/fr\/companies\/[^"\s]+\/jobs\/[^"\s]+/g,
-      new RegExp('\\\\/fr\\\\/companies\\\\/[^"\\\\s]+\\\\/jobs\\\\/[^"\\\\s]+', 'g'),
-    ];
-
-    for (const pattern of patterns) {
-      const matches = (html || '').match(pattern) || [];
-      for (const rawMatch of matches) {
-        const href = rawMatch.replace(/\\\//g, '/');
-        const cleanHref = href.split('?')[0];
-        const parts = cleanHref.split('/').filter(Boolean);
-        const companySlug = parts[2] || 'entreprise';
-        const jobSlug = parts[4] || 'alternance';
-        const prettyTitle = decodeURIComponent(jobSlug)
-          .replace(/[-_]+/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        addOfferFromHref(
-          cleanHref,
-          prettyTitle || 'Alternance',
-          decodeURIComponent(companySlug).replace(/[-_]+/g, ' '),
-          'Paris'
-        );
-      }
-    }
-
-    const jsonLdPattern = /"url"\s*:\s*"(https?:\\?\/\\?\/www\.welcometothejungle\.com\\?\/fr\\?\/companies\\?\/[^"\\]+\\?\/jobs\\?\/[^"\\]+)"/g;
-    let jsonLdMatch;
-    while ((jsonLdMatch = jsonLdPattern.exec(html || '')) !== null) {
-      const decodedUrl = jsonLdMatch[1].replace(/\\\//g, '/');
-      const relative = decodedUrl.replace(/^https?:\/\/www\.welcometothejungle\.com/, '');
-      addOfferFromHref(relative, 'Alternance', 'Entreprise non specifiee', 'Paris');
-    }
-  }
-
-  const pageResponses = await Promise.allSettled(
-    scanUrls.map((url) =>
-      httpGetWithRetries(
-        url,
-        {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
-          timeout: 20000,
-        },
-        2
-      )
-    )
-  );
-
-  pageResponses.forEach((result) => {
-    if (result.status !== 'fulfilled') {
-      return;
-    }
-    harvestFromHtml(result.value.data || '');
-  });
-
-  if (offers.length === 0) {
-    const fallbackUrls = [];
-    const seenFallback = new Set();
-    const pushFallback = (url) => {
-      if (!url || seenFallback.has(url)) {
-        return;
-      }
-      seenFallback.add(url);
-      fallbackUrls.push(url);
-    };
-
-    scanPlans.forEach((plan) => {
-      for (let p = 2; p <= plan.maxPages; p += 1) {
-        pushFallback(`${plan.base}&page=${p}`);
-      }
-    });
-
-    const fallbackResponses = await Promise.allSettled(
-      fallbackUrls.map((url) =>
-        httpGetWithRetries(
-          url,
-          {
-            headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
-            timeout: 20000,
-          },
-          2
-        )
-      )
-    );
-
-    fallbackResponses.forEach((result) => {
-      if (result.status !== 'fulfilled') {
-        return;
-      }
-      harvestFromHtml(result.value.data || '');
-    });
-  }
-
-  // Elargissement: on visite les pages jobs des entreprises detectees pour capter plus d'offres.
-  const companyUrls = Array.from(companySlugs)
-    .filter(Boolean)
-    .slice(0, 160)
-    .flatMap((slug) => [
-      `https://www.welcometothejungle.com/fr/companies/${slug}/jobs`,
-      `https://www.welcometothejungle.com/fr/companies/${slug}/jobs?query=alternance`,
-      `https://www.welcometothejungle.com/fr/companies/${slug}/jobs?query=apprentissage`,
-    ]);
-
-  const companyResponses = await Promise.allSettled(
-    companyUrls.map((url) =>
-      httpGetWithRetries(
-        url,
-        {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
-          timeout: 20000,
-        },
-        2
-      )
-    )
-  );
-
-  companyResponses.forEach((result) => {
-    if (result.status !== 'fulfilled') {
-      return;
-    }
-    harvestFromHtml(result.value.data || '');
-  });
-
-  if (offers.length === 0) {
-    throw new Error('Aucune offre exploitable detectee sur WTTJ (anti-bot / HTML limite)');
-  }
-
-  return offers;
-}
-
-async function scrapeLaBonneAlternance(city) {
-  const insee = resolveInseeFromCity(city);
-  const seedRomeBatches = [
-    'M1805,M1705,M1405,D1401,D1402',
-    'M1801,M1802,M1803,M1806,M1807',
-    'N1101,N1103,G1603,G1202',
-    'E1103,E1104,E1106,F1602,F1603',
-  ];
-  const sourceBuckets = [
-    { key: 'peJobs', label: 'PE Jobs' },
-    { key: 'partnerJobs', label: 'Partner Jobs' },
-    { key: 'matchas', label: 'Matcha' },
-    { key: 'lbaCompanies', label: 'LBA Recruiters' },
-  ];
-
-  const offers = [];
-  const caller = process.env.LBA_CALLER || 'contact@example.com apprenticeshiptracking';
-
-  async function fetchBatch(romes) {
-    const response = await axios.get(`${LBA_API_BASE}/v1/jobsEtFormations`, {
-      params: {
-        romes,
-        insee,
-        radius: 45,
-        sources: 'peJob,partnerJob,matcha,lba',
-        caller,
-        options: 'with_description',
-      },
-      headers: { 'User-Agent': USER_AGENT },
-      timeout: 20000,
-    });
-    return { romes, data: response.data };
-  }
-
-  const firstWave = await Promise.allSettled(seedRomeBatches.map((romes) => fetchBatch(romes)));
-  const successfulWaves = firstWave.filter((item) => item.status === 'fulfilled').map((item) => item.value);
-  const discoveredRomeCodes = new Set();
-
-  successfulWaves.forEach((wave) => {
-    const jobs = wave.data?.jobs || {};
-    sourceBuckets.forEach(({ key }) => {
-      const results = jobs[key]?.results || [];
-      results.forEach((item) => {
-        (item?.romes || []).forEach((rome) => {
-          const code = normalizeText(rome?.code || '').toUpperCase();
-          if (/^[A-Z]\d{4}$/.test(code)) {
-            discoveredRomeCodes.add(code);
-          }
-        });
-      });
-    });
-  });
-
-  const alreadyQueriedCodes = new Set(
-    seedRomeBatches.join(',').split(',').map((code) => normalizeText(code).toUpperCase())
-  );
-  const extraCodes = Array.from(discoveredRomeCodes).filter((code) => !alreadyQueriedCodes.has(code));
-  const extraBatches = [];
-  for (let i = 0; i < extraCodes.length && extraBatches.length < 24; i += 5) {
-    extraBatches.push(extraCodes.slice(i, i + 5).join(','));
-  }
-
-  const secondWave = await Promise.allSettled(extraBatches.map((romes) => fetchBatch(romes)));
-  const allWaveData = [
-    ...successfulWaves,
-    ...secondWave.filter((item) => item.status === 'fulfilled').map((item) => item.value),
-  ];
-
-  allWaveData.forEach((wave, batchIndex) => {
-    const response = { data: wave.data };
-    const jobs = response.data?.jobs || {};
-    sourceBuckets.forEach(({ key, label }) => {
-      const results = jobs[key]?.results || [];
-      results.forEach((item, index) => {
-        const address =
-          item?.place?.fullAddress ||
-          item?.place?.city ||
-          item?.workplace?.location?.address ||
-          city;
-        const title = item?.title || item?.offer?.title || item?.job?.title || 'Alternance';
-
-        offers.push(
-          buildOffer({
-            id: `lba-${batchIndex}-${key}-${item?.id || index}`,
-            title,
-            company: item?.company?.name || item?.workplace?.name || 'Entreprise non specifiee',
-            companySize: item?.company?.size || item?.workplace?.size || 'Inconnue',
-            location: address,
-            city: item?.place?.city || extractCityFromLocation(address, city),
-            url: findBestUrl(item),
-            source: `La Bonne Alternance (${label})`,
-            description: item?.job?.description || item?.description || item?.offer?.description || '',
-            studyLevel:
-              (Array.isArray(item?.job?.offer_access_conditions)
-                ? item.job.offer_access_conditions.join(' ')
-                : item?.job?.offer_access_conditions || '') ||
-              item?.job?.diploma ||
-              '',
-            postedAt: item?.job?.creationDate || item?.offer?.publication?.creation || null,
-            contractType: item?.job?.contractType || item?.contractType || 'Alternance',
-            latitude:
-              typeof item?.place?.latitude === 'number' ? item.place.latitude : null,
-            longitude:
-              typeof item?.place?.longitude === 'number' ? item.place.longitude : null,
-          })
-        );
-      });
-    });
-  });
-
-  return offers;
-}
-
 async function scrapeJobijoba() {
-  const query = encodeURIComponent('alternance paris septembre 2026');
-  const url = `https://www.jobijoba.com/fr/emploi/Alternance+Paris`; 
+  const url = `https://www.jobijoba.com/fr/emploi/CDI+Paris`;
   const response = await axios.get(url, {
     headers: { 'User-Agent': USER_AGENT },
     timeout: 15000,
@@ -958,23 +652,25 @@ function fallbackOffers() {
   return [
     buildOffer({
       id: 'fallback-1',
-      title: 'Assistant Marketing Digital en alternance',
+      title: 'Analyste Financier',
       company: 'Agence Horizon',
       location: 'Paris 11',
       url: 'https://example.com/offre-1',
       source: 'Fallback',
-      description: 'Alternance de 12 mois. Demarrage souhaite en septembre 2026.',
+      description: 'Poste en CDI, analyse financière et reporting pour des clients grands comptes.',
       postedAt: '2026-04-20',
+      contractType: 'CDI',
     }),
     buildOffer({
       id: 'fallback-2',
-      title: 'Data Analyst Junior - Alternance',
+      title: 'Consultant Junior en Stratégie',
       company: 'Nova Data',
       location: 'Paris 13',
       url: 'https://example.com/offre-2',
       source: 'Fallback',
-      description: 'Alternance orientee BI, prise de poste septembre 2026.',
+      description: 'CDI oriente conseil en management, disponibilite immediate.',
       postedAt: '2026-04-25',
+      contractType: 'CDI',
     }),
   ];
 }
@@ -990,169 +686,6 @@ function dedupeOffers(offers) {
     return true;
   });
 }
-
-app.get('/api/offers', async (req, res) => {
-  const city = req.query.city || TARGET_CITY;
-  const start = req.query.start || TARGET_START;
-  const profile = normalizeText(req.query.profile || 'admin').toLowerCase();
-  const forceRefresh = req.query.refresh === 'true';
-  const cacheKey = buildCacheKey(profile, city, start);
-
-  // --- Servir depuis le cache si disponible et non expiré ---
-  if (!forceRefresh && isCacheValid(cacheKey)) {
-    const cacheEntry = offersCache.get(cacheKey);
-    return res.json({
-      ...cacheEntry.data,
-      fromCache: true,
-      cachedAt: new Date(cacheEntry.fetchedAt).toISOString(),
-    });
-  }
-
-  const results = [];
-  const errors = [];
-
-  const tasks = [
-    { name: 'La Bonne Alternance API', fn: () => scrapeLaBonneAlternance(city) },
-    { name: 'Welcome to the Jungle', fn: scrapeWelcomeToTheJungle },
-    { name: 'Jobijoba', fn: scrapeJobijoba },
-    { name: 'LinkedIn', fn: () => scrapeLinkedIn(city) },
-    { name: 'Talent.com', fn: scrapeTalentCom },
-  ];
-
-  const sourceStatuses = tasks.map((task) => ({
-    source: task.name,
-    status: 'pending',
-    fetched: 0,
-    error: null,
-  }));
-
-  await Promise.all(
-    tasks.map(async (task, index) => {
-      try {
-        const offers = await task.fn();
-        results.push(...offers);
-        sourceStatuses[index] = {
-          source: task.name,
-          status: 'ok',
-          fetched: offers.length,
-          error: null,
-        };
-      } catch (error) {
-        errors.push({ source: task.name, error: error.message });
-        sourceStatuses[index] = {
-          source: task.name,
-          status: 'error',
-          fetched: 0,
-          error: error.message,
-        };
-      }
-    })
-  );
-
-  const deduped = dedupeOffers(results);
-
-  // --- Fusion avec le store persistant ---
-  // Une source est considérée "fiable" pour marquer indispo seulement si elle a
-  // renvoyé au moins MIN_OFFERS_TO_TRUST offres (évite les faux positifs quand
-  // l'anti-scraping retourne 0 résultat alors que les offres existent encore)
-  const MIN_OFFERS_TO_TRUST = 3;
-  const UNAVAILABLE_GRACE_DAYS = 10; // offres < 10 jours ne sont jamais marquées indispo
-
-  const successfulSources = new Set(
-    sourceStatuses
-      .filter((s) => s.status === 'ok' && s.fetched >= MIN_OFFERS_TO_TRUST)
-      .map((s) => s.source)
-  );
-
-  // Index des nouvelles offres par URL (ou clé dedup)
-  function offerKey(o) {
-    return (o.url || normalizeText(`${o.source}|${o.title}|${o.company}`)).toLowerCase();
-  }
-  const freshByKey = new Map(deduped.map((o) => [offerKey(o), o]));
-
-  // Récupérer le store persistant pour cette clé de cache
-  const previousOffer = persistentOffersStore.get(cacheKey) || [];
-
-  // Mettre à jour ou conserver les offres précédentes
-  const nowIso = new Date().toISOString();
-  const mergedMap = new Map();
-
-  // 1. Intégrer les anciennes offres
-  for (const prev of previousOffer) {
-    const key = offerKey(prev);
-    if (freshByKey.has(key)) {
-      // L'offre est revenue : supprimer le flag indisponible
-      const updated = { ...freshByKey.get(key), unavailable: false, unavailableSince: null };
-      mergedMap.set(key, updated);
-      freshByKey.delete(key); // ne pas la rajouter en double
-    } else if (successfulSources.has(prev.source)) {
-      // Source fiable et offre absente → marquer indisponible, sauf si offre récente
-      const postedTime = prev.postedAt ? new Date(prev.postedAt).getTime() : NaN;
-      const isRecent = Number.isFinite(postedTime) &&
-        (Date.now() - postedTime) < UNAVAILABLE_GRACE_DAYS * 24 * 60 * 60 * 1000;
-      if (!prev.unavailable && !isRecent) {
-        mergedMap.set(key, { ...prev, unavailable: true, unavailableSince: nowIso });
-      } else {
-        mergedMap.set(key, prev);
-      }
-    } else {
-      // Source en erreur : conserver l'offre telle quelle sans la marquer
-      mergedMap.set(key, prev);
-    }
-  }
-
-  // 2. Ajouter les nouvelles offres jamais vues
-  for (const [key, offer] of freshByKey) {
-    mergedMap.set(key, { ...offer, unavailable: false, unavailableSince: null });
-  }
-
-  const allOffersMerged = Array.from(mergedMap.values());
-
-  // Sauvegarder dans le store persistant
-  persistentOffersStore.set(cacheKey, allOffersMerged);
-
-  // Trier strictement par date (plus recent en premier, date absente/invalide a la fin)
-  allOffersMerged.sort((a, b) => {
-    const aTime = a.postedAt ? new Date(a.postedAt).getTime() : NaN;
-    const bTime = b.postedAt ? new Date(b.postedAt).getTime() : NaN;
-    const aValid = Number.isFinite(aTime);
-    const bValid = Number.isFinite(bTime);
-
-    if (!aValid && !bValid) return 0;
-    if (!aValid) return 1;
-    if (!bValid) return -1;
-    return bTime - aTime;
-  });
-  const offers = allOffersMerged;
-  const filtered = offers.filter((offer) => {
-    const cityOk = new RegExp(city, 'i').test(`${offer.location || ''} ${offer.city || ''}`) || offer.cityMatch;
-    const startOk = new RegExp(start.replace(/\s+/g, '.*'), 'i').test(`${offer.title} ${offer.description}`) || offer.startMatch;
-    return cityOk || startOk;
-  });
-
-  const payload = {
-    query: { city, start, profile },
-    totalFetchedBeforeDedup: results.length,
-    totalAfterDedup: offers.length,
-    totalMatchedHeuristic: filtered.length,
-    total: offers.length,
-    offers: allOffersMerged.length > 0 ? allOffersMerged : fallbackOffers(),
-    errors,
-    sourceStatuses,
-    fromCache: false,
-    cachedAt: new Date().toISOString(),
-    note:
-      'Certaines plateformes changent regulierement leur HTML. Si une source echoue, les autres continuent et des offres de demonstration sont ajoutees en secours.',
-  };
-
-  // Stocker en cache
-  offersCache.set(cacheKey, {
-    data: payload,
-    fetchedAt: Date.now(),
-  });
-
-  res.json(payload);
-});
 
 app.get('/api/admin/cache-info', (req, res) => {
   const profile = normalizeText(req.query.profile || '').toLowerCase();
@@ -1276,11 +809,8 @@ app.post('/api/admin/clear-cache-all', (req, res) => {
 
 function extractKeywords(text, limit = 4) {
   const stopWords = new Set([
-    'alternance',
-    'apprentissage',
     'stage',
     'paris',
-    'septembre',
     'poste',
     'offre',
     'entreprise',
@@ -1332,13 +862,194 @@ app.post('/api/templates', (req, res) => {
   const focusTopics = toTitleWords(keywords);
   const descriptionSnippet =
     normalizeText(offer.description).slice(0, 240) ||
-    'des missions operationnelles avec une forte courbe d apprentissage';
+    'des missions operationnelles avec de fortes responsabilites';
 
-  const coverLetter = `Objet : Candidature alternance - ${offer.title}\n\nMadame, Monsieur,\n\nActuellement en ${formation}, je recherche une alternance a partir de septembre 2026 sur ${city}. Votre offre \"${offer.title}\" chez ${offer.company} correspond exactement a la direction que je souhaite donner a mon projet professionnel.\n\nLe poste met en avant ${focusTopics}. Sur ces sujets, je peux mobiliser ${skills} et une forte capacite d execution. Je souhaite contribuer concretement a vos objectifs, tout en progressant dans un environnement exigeant et formateur.\n\nCe qui m interesse particulierement dans votre annonce est l orientation suivante : ${descriptionSnippet}. Cette dynamique est en coherence directe avec mes attentes et ma motivation pour cette alternance.\n\nJe serais ravie d echanger avec vous lors d un entretien afin de vous presenter plus en detail ce que je peux apporter a votre equipe.\n\nCordialement,\n${firstName} ${lastName}\n${phone}\n${email}`;
+  const coverLetter = `Objet : Candidature - ${offer.title}\n\nMadame, Monsieur,\n\nTitulaire d'${formation}, je suis vivement interesse(e) par le poste de ${offer.title} chez ${offer.company}, disponible sur ${city}. Ce poste correspond exactement a la direction que je souhaite donner a mon projet professionnel, et je suis disponible pour debuter des que possible.\n\nLe poste met en avant ${focusTopics}. Sur ces sujets, je peux mobiliser ${skills} et une forte capacite d execution. Je souhaite contribuer concretement a vos objectifs, tout en evoluant dans un environnement exigeant et stimulant.\n\nCe qui m interesse particulierement dans votre annonce est l orientation suivante : ${descriptionSnippet}. Cette dynamique est en coherence directe avec mes attentes et ma motivation pour ce poste.\n\nJe serais ravie d echanger avec vous lors d un entretien afin de vous presenter plus en detail ce que je peux apporter a votre equipe.\n\nCordialement,\n${firstName} ${lastName}\n${phone}\n${email}`;
 
-  const linkedinHook = `Bonjour ${offer.company},\n\nJe suis actuellement a la recherche d'une alternance a Paris pour septembre 2026 et votre offre \"${offer.title}\" correspond parfaitement a mon projet.\n\nJe serais ravie d'echanger rapidement sur le poste et la valeur que je peux apporter a votre equipe.\n\n${firstName} ${lastName}`;
+  const linkedinHook = `Bonjour ${offer.company},\n\nJe suis actuellement a la recherche d'un poste a Paris, disponible des que possible, et votre offre \"${offer.title}\" correspond parfaitement a mon projet.\n\nJe serais ravie d'echanger rapidement sur le poste et la valeur que je peux apporter a votre equipe.\n\n${firstName} ${lastName}`;
 
   return res.json({ coverLetter, linkedinHook });
+});
+
+
+const jobsCacheKey = 'jobs-cache-v1';
+
+// Scraping toutes sources peut prendre plusieurs minutes (LinkedIn: des centaines
+// de requetes). On ne bloque donc jamais la reponse HTTP dessus (ca provoquerait
+// un 504 cote proxy/hebergeur) : le scraping tourne en tache de fond et le client
+// fait du polling sur ce meme endpoint jusqu'a ce que le resultat soit pret.
+const jobsInProgress = new Map(); // cacheKey -> { startedAt }
+
+async function runScrapeJob(cacheKey, city) {
+  const results = [];
+  const errors = [];
+
+  const tasks = [
+    { name: 'Jobijoba', fn: scrapeJobijoba },
+    { name: 'LinkedIn', fn: () => scrapeLinkedIn(city) },
+    { name: 'Talent.com', fn: scrapeTalentCom },
+  ];
+
+  const sourceStatuses = tasks.map((task) => ({
+    source: task.name,
+    status: 'pending',
+    fetched: 0,
+    error: null,
+  }));
+
+  await Promise.all(
+    tasks.map(async (task, index) => {
+      try {
+        const offers = await task.fn();
+        results.push(...offers);
+        sourceStatuses[index] = {
+          source: task.name,
+          status: 'ok',
+          fetched: offers.length,
+          error: null,
+        };
+      } catch (error) {
+        errors.push({ source: task.name, error: error.message });
+        sourceStatuses[index] = {
+          source: task.name,
+          status: 'error',
+          fetched: 0,
+          error: error.message,
+        };
+        console.error(`Error fetching ${task.name} jobs: ${error.message}`);
+      }
+    })
+  );
+
+  const deduped = dedupeOffers(results);
+
+  // --- Fusion avec le store persistant ---
+  // Une source est considérée "fiable" pour marquer indispo seulement si elle a
+  // renvoyé au moins MIN_OFFERS_TO_TRUST offres (évite les faux positifs quand
+  // l'anti-scraping retourne 0 résultat alors que les offres existent encore)
+  const MIN_OFFERS_TO_TRUST = 3;
+  const UNAVAILABLE_GRACE_DAYS = 10; // offres < 10 jours ne sont jamais marquées indispo
+
+  const successfulSources = new Set(
+    sourceStatuses
+      .filter((s) => s.status === 'ok' && s.fetched >= MIN_OFFERS_TO_TRUST)
+      .map((s) => s.source)
+  );
+
+  // Index des nouvelles offres par URL (ou clé dedup)
+  function offerKey(o) {
+    return (o.url || normalizeText(`${o.source}|${o.title}|${o.company}`)).toLowerCase();
+  }
+  const freshByKey = new Map(deduped.map((o) => [offerKey(o), o]));
+
+  // Récupérer le store persistant pour cette clé de cache
+  const previousOffer = persistentOffersStore.get(cacheKey) || [];
+
+  // Mettre à jour ou conserver les offres précédentes
+  const nowIso = new Date().toISOString();
+  const mergedMap = new Map();
+
+  // 1. Intégrer les anciennes offres
+  for (const prev of previousOffer) {
+    const key = offerKey(prev);
+    if (freshByKey.has(key)) {
+      // L'offre est revenue : supprimer le flag indisponible
+      const updated = { ...freshByKey.get(key), unavailable: false, unavailableSince: null };
+      mergedMap.set(key, updated);
+      freshByKey.delete(key); // ne pas la rajouter en double
+    } else if (successfulSources.has(prev.source)) {
+      // Source fiable et offre absente → marquer indisponible, sauf si offre récente
+      const postedTime = prev.postedAt ? new Date(prev.postedAt).getTime() : NaN;
+      const isRecent = Number.isFinite(postedTime) &&
+        (Date.now() - postedTime) < UNAVAILABLE_GRACE_DAYS * 24 * 60 * 60 * 1000;
+      if (!prev.unavailable && !isRecent) {
+        mergedMap.set(key, { ...prev, unavailable: true, unavailableSince: nowIso });
+      } else {
+        mergedMap.set(key, prev);
+      }
+    } else {
+      // Source en erreur : conserver l'offre telle quelle sans la marquer
+      mergedMap.set(key, prev);
+    }
+  }
+
+  // 2. Ajouter les nouvelles offres jamais vues
+  for (const [key, offer] of freshByKey) {
+    mergedMap.set(key, { ...offer, unavailable: false, unavailableSince: null });
+  }
+
+  const allOffersMerged = Array.from(mergedMap.values());
+
+  // Sauvegarder dans le store persistant
+  persistentOffersStore.set(cacheKey, allOffersMerged);
+
+  // Trier strictement par date (plus recent en premier, date absente/invalide a la fin)
+  allOffersMerged.sort((a, b) => {
+    const aTime = a.postedAt ? new Date(a.postedAt).getTime() : NaN;
+    const bTime = b.postedAt ? new Date(b.postedAt).getTime() : NaN;
+    const aValid = Number.isFinite(aTime);
+    const bValid = Number.isFinite(bTime);
+
+    if (!aValid && !bValid) return 0;
+    if (!aValid) return 1;
+    if (!bValid) return -1;
+    return bTime - aTime;
+  });
+
+  const cacheData = {
+    jobs: allOffersMerged.length > 0 ? allOffersMerged : fallbackOffers(),
+    totalFetchedBeforeDedup: results.length,
+    totalAfterDedup: allOffersMerged.length,
+    errors,
+    sourceStatuses,
+    fetchedAt: new Date().toISOString(),
+  };
+
+  offersCache.set(cacheKey, {
+    data: cacheData,
+    fetchedAt: Date.now(),
+  });
+
+  persistCacheToDisk();
+
+  return cacheData;
+}
+
+app.get('/api/jobs', (req, res) => {
+  const city = normalizeText(req.query.city || 'Paris');
+  const forceRefresh = req.query.refresh === 'true';
+  const cacheKey = `${jobsCacheKey}|${city.toLowerCase()}`;
+
+  if (!forceRefresh) {
+    const cached = offersCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+      return res.json({
+        ...cached.data,
+        fromCache: true,
+        inProgress: false,
+        cachedAt: new Date(cached.fetchedAt).toISOString(),
+      });
+    }
+  }
+
+  if (!jobsInProgress.has(cacheKey)) {
+    const startedAt = Date.now();
+    const job = runScrapeJob(cacheKey, city)
+      .catch((error) => {
+        console.error(`Erreur scraping (${cacheKey}): ${error.message}`);
+      })
+      .finally(() => {
+        jobsInProgress.delete(cacheKey);
+      });
+    jobsInProgress.set(cacheKey, { startedAt, job });
+  }
+
+  return res.json({
+    jobs: [],
+    inProgress: true,
+    fromCache: false,
+    startedAt: jobsInProgress.get(cacheKey).startedAt,
+  });
 });
 
 app.get('/api/open-offer', async (req, res) => {

@@ -1,15 +1,14 @@
 {
   "name": "apprenticeshiptracking",
   "version": "1.0.0",
-  "description": "Apprenticeship finder and tracking website",
+  "description": "Job finder and tracking website",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
   "keywords": [
-    "apprenticeship",
-    "alternance",
+    "job-search",
     "tracking",
     "scraping"
   ],
