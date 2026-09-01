@@ -3,6 +3,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 function normalizeText(text) {
   return (text || '').replace(/\s+/g, ' ').trim();
@@ -34,6 +35,13 @@ const SECTOR_KEYWORDS = [
   { fr: 'banque', en: 'banking' },
   { fr: 'financement', en: 'financing' },
   { fr: 'fund finance', en: 'fund finance' },
+  { fr: "fonds d'investissement", en: 'investment fund' },
+  { fr: 'private equity', en: 'private equity' },
+  { fr: "gestion d'actifs", en: 'asset management' },
+  { fr: "banque d'investissement", en: 'investment banking' },
+  { fr: 'fusions acquisitions', en: 'mergers and acquisitions' },
+  { fr: 'corporate finance', en: 'corporate finance' },
+  { fr: 'grand groupe', en: 'multinational corporation' },
 ];
 const SECTOR_MATCH_REGEX = new RegExp(
   SECTOR_KEYWORDS.flatMap(({ fr, en }) => [fr, en])
@@ -41,6 +49,45 @@ const SECTOR_MATCH_REGEX = new RegExp(
     .join('|'),
   'i'
 );
+
+// Certains intitules de metiers hors-secteur (sante, etc.) matchent quand meme
+// SECTOR_MATCH_REGEX quand la description mentionne juste "grand groupe" ou
+// "banque" en passant (ex: "Infirmier(e)... Siege social grand groupe"). On
+// exclut ces intitules connus meme s'ils matchent par ailleurs un mot-cle secteur.
+const SECTOR_EXCLUDE_REGEX =
+  /\b(infirmier|infirmi[eè]re|aide[- ]soignant|kin[ée]sith[ée]rapeute|m[ée]decin|pharmacien|sage[- ]femme|[ée]ducateur sp[ée]cialis[ée])\b/i;
+
+// Termes utilises pour multiplier les recherches sur Jobijoba/Talent.com (qui
+// n'ont pas d'API par mots-cles multiples comme LinkedIn) : une requete generique
+// ("CDI Paris") remonte tres peu d'offres finance une fois SECTOR_MATCH_REGEX
+// applique, donc on interroge chaque terme sectoriel separement.
+const SCRAPE_QUERY_TERMS = Array.from(
+  new Set(['finance', 'banque', 'conseil', ...SECTOR_KEYWORDS.map(({ fr }) => fr)])
+);
+
+// Identifiant stable base sur l'URL (ou a defaut titre/entreprise/lieu) : les
+// offres doivent garder le meme id d'un scraping a l'autre, sinon le suivi ne
+// reconnait plus une offre deja ajoutee (elle redevient "+ Ajouter au suivi").
+function stableOfferId(source, url, title, company, location) {
+  const identity = url
+    ? url.toLowerCase()
+    : normalizeText(`${source}|${title}|${company}|${location}`).toLowerCase();
+  const hash = crypto.createHash('sha1').update(identity).digest('hex').slice(0, 16);
+  const sourceSlug = normalizeText(source).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return `${sourceSlug}-${hash}`;
+}
+
+// Jobijoba encode ses liens d'offres en ROT13 (avec "=cg=" a la place des points
+// pour brouiller le domaine) dans l'attribut data-atc, plutot qu'un <a href> classique.
+function decodeJobijobaLink(atc) {
+  if (!atc) return '';
+  const rot13 = atc.replace(/[a-zA-Z]/g, (c) => {
+    const base = c <= 'Z' ? 65 : 97;
+    return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
+  });
+  return rot13.replace(/=cg=/g, '.');
+}
+
 const DEFAULT_CELEXTIME_ADMIN_PASSWORD = 'Celextime1';
 const CELEXTIME_ADMIN_PASSWORD = normalizeText(
   process.env.CELEXTIME_ADMIN_PASSWORD || DEFAULT_CELEXTIME_ADMIN_PASSWORD
@@ -530,7 +577,7 @@ async function scrapeLinkedIn(city) {
         if (title && url && !seenUrls.has(url)) {
           seenUrls.add(url);
           rawEntries.push({
-            id: `linkedin-${item.keywords}-${item.start}-${index}`,
+            id: stableOfferId('linkedin', url, title, company, location),
             title,
             company,
             location,
@@ -569,14 +616,25 @@ async function scrapeLinkedIn(city) {
 }
 
 async function scrapeTalentCom() {
-  // Talent.com: pagination via ?p=N (pages 1 à 5)
-  const pages = [1, 2, 3, 4, 5];
+  // Talent.com n'a pas de recherche multi-mots-clefs comme LinkedIn : on lance
+  // une recherche par terme sectoriel (finance/banque/private equity/fonds/...)
+  // sur plusieurs pages, pour avoir bien plus de volume qu'une seule requete
+  // generique "CDI Paris" une fois le filtre sectoriel applique.
+  const pages = [1, 2, 3];
   const allOffers = [];
+  const seenUrls = new Set();
+
+  const requests = [];
+  SCRAPE_QUERY_TERMS.forEach((term) => {
+    pages.forEach((page) => {
+      requests.push({ term, page });
+    });
+  });
 
   await Promise.allSettled(
-    pages.map(async (page) => {
+    requests.map(async ({ term, page }) => {
       const response = await axios.get('https://www.talent.com/fr/jobs', {
-        params: { k: 'CDI', l: 'Paris', p: page },
+        params: { k: `CDI ${term}`, l: 'Paris', p: page },
         headers: {
           'User-Agent': USER_AGENT,
           'Accept-Language': 'fr-FR,fr;q=0.9',
@@ -584,7 +642,6 @@ async function scrapeTalentCom() {
         timeout: 15000,
       });
       const $ = cheerio.load(response.data);
-      const pageOffers = [];
 
       $('[class*="JobCard_card"]').each((index, node) => {
         const title = normalizeText($('[class*="JobCard_title"]', node).text());
@@ -593,10 +650,11 @@ async function scrapeTalentCom() {
         const href = $('a', node).first().attr('href') || '';
         const url = href.startsWith('http') ? href : href ? `https://www.talent.com${href}` : '';
 
-        if (title && url) {
-          pageOffers.push(
+        if (title && url && !seenUrls.has(url)) {
+          seenUrls.add(url);
+          allOffers.push(
             buildOffer({
-              id: `talent-p${page}-${index}`,
+              id: stableOfferId('talent', url, title, company, location),
               title,
               company,
               location,
@@ -606,8 +664,6 @@ async function scrapeTalentCom() {
           );
         }
       });
-
-      allOffers.push(...pageOffers);
     })
   );
 
@@ -615,38 +671,72 @@ async function scrapeTalentCom() {
 }
 
 async function scrapeJobijoba() {
-  const url = `https://www.jobijoba.com/fr/emploi/CDI+Paris`;
-  const response = await axios.get(url, {
-    headers: { 'User-Agent': USER_AGENT },
-    timeout: 15000,
-  });
+  // Meme logique que Talent.com : une requete par terme sectoriel plutot
+  // qu'une seule recherche generique "CDI Paris". Le site n'expose plus de
+  // <a href> classique sur ses cartes d'offres : le lien est dans l'attribut
+  // data-atc, encode en ROT13 (cf. decodeJobijobaLink).
+  const allOffers = [];
+  const seenUrls = new Set();
 
-  const $ = cheerio.load(response.data);
-  const offers = [];
+  await Promise.allSettled(
+    SCRAPE_QUERY_TERMS.map(async (term) => {
+      const slug = ['CDI', ...term.split(' '), 'Paris'].map(encodeURIComponent).join('+');
+      const url = `https://www.jobijoba.com/fr/emploi/${slug}`;
+      const response = await axios.get(url, {
+        headers: { 'User-Agent': USER_AGENT },
+        timeout: 15000,
+      });
 
-  $('article, .offer, .job').each((index, node) => {
-    const container = $(node);
-    const title = container.find('h2, h3, .title').first().text();
-    const company = container.find('.company, .societe').first().text() || 'Entreprise non specifiee';
-    const location = container.find('.location, .ville').first().text() || 'Paris';
-    const link = container.find('a').first().attr('href');
+      const $ = cheerio.load(response.data);
 
-    if (title && link) {
-      offers.push(
-        buildOffer({
-          id: `jobijoba-${index}`,
-          title,
-          company,
-          location,
-          url: link.startsWith('http') ? link : `https://www.jobijoba.com${link}`,
-          source: 'Jobijoba',
-        })
-      );
-    }
-  });
+      $('.offer').each((index, node) => {
+        const container = $(node);
+        const linkNode = container.find('[data-atc]').first();
+        const fullUrl = decodeJobijobaLink(linkNode.attr('data-atc'));
 
-  return offers;
+        let title = normalizeText(container.find('.offer-header-title').first().text());
+        let company = '';
+        try {
+          const product = JSON.parse(linkNode.attr('data-product') || '{}');
+          const item = product.ecommerce && product.ecommerce.click && product.ecommerce.click.products && product.ecommerce.click.products[0];
+          if (item) {
+            title = title || normalizeText(item.name || '');
+            company = normalizeText(item.brand || '');
+          }
+        } catch (error) {
+          // data-product non parsable : on garde le fallback DOM ci-dessous
+        }
+
+        if (!company) {
+          company =
+            normalizeText(container.find('.icon-apartment').closest('.feature').find('span').last().text()) ||
+            'Entreprise non specifiee';
+        }
+
+        const location =
+          normalizeText(container.find('.icon-map-marker').closest('.feature').find('span').last().text()) ||
+          'Paris';
+
+        if (title && fullUrl && !seenUrls.has(fullUrl)) {
+          seenUrls.add(fullUrl);
+          allOffers.push(
+            buildOffer({
+              id: stableOfferId('jobijoba', fullUrl, title, company, location),
+              title,
+              company,
+              location,
+              url: fullUrl,
+              source: 'Jobijoba',
+            })
+          );
+        }
+      });
+    })
+  );
+
+  return allOffers;
 }
+
 
 function fallbackOffers() {
   return [
@@ -924,8 +1014,10 @@ async function runScrapeJob(cacheKey, city) {
   // Jobijoba/Talent.com sont interrogés avec une requête generique ("CDI Paris")
   // qui remonte tous les secteurs (y compris santé, etc.) : on ne garde que les
   // offres qui matchent réellement finance/conseil/banque/stratégie.
-  const sectorFiltered = results.filter((offer) =>
-    SECTOR_MATCH_REGEX.test(`${offer.title} ${offer.company} ${offer.description || ''}`)
+  const sectorFiltered = results.filter(
+    (offer) =>
+      SECTOR_MATCH_REGEX.test(`${offer.title} ${offer.company} ${offer.description || ''}`) &&
+      !SECTOR_EXCLUDE_REGEX.test(offer.title)
   );
 
   const deduped = dedupeOffers(sectorFiltered);
@@ -951,8 +1043,10 @@ async function runScrapeJob(cacheKey, city) {
 
   // Récupérer le store persistant pour cette clé de cache (on purge au passage les
   // offres hors-secteur qui auraient pu y être ajoutées avant ce filtre)
-  const previousOffer = (persistentOffersStore.get(cacheKey) || []).filter((offer) =>
-    SECTOR_MATCH_REGEX.test(`${offer.title} ${offer.company} ${offer.description || ''}`)
+  const previousOffer = (persistentOffersStore.get(cacheKey) || []).filter(
+    (offer) =>
+      SECTOR_MATCH_REGEX.test(`${offer.title} ${offer.company} ${offer.description || ''}`) &&
+      !SECTOR_EXCLUDE_REGEX.test(offer.title)
   );
 
   // Mettre à jour ou conserver les offres précédentes
@@ -1030,6 +1124,21 @@ app.get('/api/jobs', (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
   const cacheKey = `${jobsCacheKey}|${city.toLowerCase()}`;
 
+  // Si un scraping est déjà en cours pour cette clé, ne jamais servir le cache
+  // TTL même sans refresh=true : sinon le 2e appel du polling (qui repasse en
+  // refresh=false pour ne pas relancer un scrape) renvoie immédiatement les
+  // anciennes données avec inProgress=false pendant que le refresh tourne
+  // encore en arrière-plan, ce qui coupe le polling trop tôt côté client.
+  const existingJob = jobsInProgress.get(cacheKey);
+  if (existingJob) {
+    return res.json({
+      jobs: [],
+      inProgress: true,
+      fromCache: false,
+      startedAt: existingJob.startedAt,
+    });
+  }
+
   if (!forceRefresh) {
     const cached = offersCache.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
@@ -1042,23 +1151,21 @@ app.get('/api/jobs', (req, res) => {
     }
   }
 
-  if (!jobsInProgress.has(cacheKey)) {
-    const startedAt = Date.now();
-    const job = runScrapeJob(cacheKey, city)
-      .catch((error) => {
-        console.error(`Erreur scraping (${cacheKey}): ${error.message}`);
-      })
-      .finally(() => {
-        jobsInProgress.delete(cacheKey);
-      });
-    jobsInProgress.set(cacheKey, { startedAt, job });
-  }
+  const startedAt = Date.now();
+  const job = runScrapeJob(cacheKey, city)
+    .catch((error) => {
+      console.error(`Erreur scraping (${cacheKey}): ${error.message}`);
+    })
+    .finally(() => {
+      jobsInProgress.delete(cacheKey);
+    });
+  jobsInProgress.set(cacheKey, { startedAt, job });
 
   return res.json({
     jobs: [],
     inProgress: true,
     fromCache: false,
-    startedAt: jobsInProgress.get(cacheKey).startedAt,
+    startedAt,
   });
 });
 
