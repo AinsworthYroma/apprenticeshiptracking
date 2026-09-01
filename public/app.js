@@ -130,11 +130,16 @@ function hideProgress() {
 
 // ---- fetching offers -------------------------------------------------
 
-// Le scraping cote serveur tourne en tache de fond (il peut prendre plus d'une
-// minute) : on interroge /api/jobs jusqu'a ce que le resultat soit pret, plutot
-// que de garder une seule requete ouverte (ce qui provoquait des erreurs 504).
+// Le scraping cote serveur tourne en tache de fond : on interroge /api/jobs
+// jusqu'a ce que le resultat soit pret, plutot que de garder une seule requete
+// ouverte (ce qui provoquait des erreurs 504). Le scraping interroge desormais
+// beaucoup plus de mots-cles sectoriels (banque/fonds/private equity/etc. sur
+// LinkedIn + Jobijoba + Talent.com) et prend regulierement 4-5 minutes : le
+// timeout client doit rester tres au-dessus de ca, sinon on affiche une erreur
+// a l'utilisateur alors meme que le scraping continue en arriere-plan cote
+// serveur et aurait fini quelques secondes plus tard.
 const JOBS_POLL_INTERVAL_MS = 3000;
-const JOBS_POLL_MAX_ATTEMPTS = 60; // ~3 minutes max
+const JOBS_POLL_MAX_ATTEMPTS = 240; // ~12 minutes max
 
 async function requestJobs(city, forceRefresh) {
   let refreshFlag = forceRefresh;
