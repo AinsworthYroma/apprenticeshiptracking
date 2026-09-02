@@ -137,7 +137,7 @@ if (process.env.NODE_ENV === 'production' && !normalizeText(process.env.COPINE_P
 // ---------------------------------------------------------------------------
 // Cache serveur en mémoire
 // ---------------------------------------------------------------------------
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 heures par défaut
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 heures : laisse le temps de checker les offres sans re-scraper dans le dos de l'utilisateur
 
 const offersCache = new Map();
 // Store persistant : conserve toutes les offres déjà vues, par cacheKey
