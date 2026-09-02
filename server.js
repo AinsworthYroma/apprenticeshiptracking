@@ -13,6 +13,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Disable caching for CSS files to always get the latest version
+app.use((req, res, next) => {
+  if (req.url.endsWith('.css') || req.url.endsWith('.js')) {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const TARGET_CITY = 'Paris';
