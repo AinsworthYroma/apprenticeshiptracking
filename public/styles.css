@@ -45,9 +45,6 @@ body {
   background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
   border-bottom: 1px solid var(--border);
   padding: 2rem 1.5rem;
-  position: sticky;
-  top: 0;
-  z-index: 40;
 }
 
 .hero-top {
@@ -235,6 +232,8 @@ body {
 
 .tabs {
   display: flex;
+  align-items: center;
+  height: 56px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   padding: 0 1.5rem;
@@ -304,7 +303,7 @@ body {
   border-bottom: 1px solid var(--border);
   padding-bottom: 1rem;
   position: sticky;
-  top: 0;
+  top: 56px;
   background: var(--surface);
   z-index: 20;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
