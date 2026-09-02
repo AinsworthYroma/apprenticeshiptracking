@@ -303,6 +303,11 @@ body {
   margin-bottom: 1.5rem;
   border-bottom: 1px solid var(--border);
   padding-bottom: 1rem;
+  position: sticky;
+  top: 110px;
+  background: var(--surface);
+  z-index: 20;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .panel-header h2 {
