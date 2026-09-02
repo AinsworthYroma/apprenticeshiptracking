@@ -239,10 +239,10 @@ body {
   background: var(--surface);
   padding: 0 1.5rem;
   position: fixed;
-  top: 60px;
+  top: 200px;
   left: 0;
   right: 0;
-  z-index: 30;
+  z-index: 45;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
@@ -271,7 +271,7 @@ body {
   display: none;
   flex: 1;
   overflow-y: auto;
-  padding-top: 60px;
+  padding-top: 200px;
 }
 
 .tab-pane.active {
