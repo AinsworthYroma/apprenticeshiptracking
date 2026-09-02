@@ -1172,6 +1172,12 @@ app.get('/api/jobs', (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
   const cacheKey = `${jobsCacheKey}|${city.toLowerCase()}`;
 
+  // En attendant un scraping (en cours ou tout juste lancé), servir les
+  // dernières offres connues du store persistant plutôt qu'un écran vide :
+  // le TTL de 2h expire régulièrement en tâche de fond, et sans ce fallback
+  // l'utilisateur voit ses offres déjà scrappées disparaître pendant le refresh.
+  const staleJobs = persistentOffersStore.get(cacheKey) || [];
+
   // Si un scraping est déjà en cours pour cette clé, ne jamais servir le cache
   // TTL même sans refresh=true : sinon le 2e appel du polling (qui repasse en
   // refresh=false pour ne pas relancer un scrape) renvoie immédiatement les
@@ -1180,9 +1186,10 @@ app.get('/api/jobs', (req, res) => {
   const existingJob = jobsInProgress.get(cacheKey);
   if (existingJob) {
     return res.json({
-      jobs: [],
+      jobs: staleJobs,
       inProgress: true,
-      fromCache: false,
+      fromCache: staleJobs.length > 0,
+      stale: staleJobs.length > 0,
       startedAt: existingJob.startedAt,
     });
   }
@@ -1210,9 +1217,10 @@ app.get('/api/jobs', (req, res) => {
   jobsInProgress.set(cacheKey, { startedAt, job });
 
   return res.json({
-    jobs: [],
+    jobs: staleJobs,
     inProgress: true,
-    fromCache: false,
+    fromCache: staleJobs.length > 0,
+    stale: staleJobs.length > 0,
     startedAt,
   });
 });
