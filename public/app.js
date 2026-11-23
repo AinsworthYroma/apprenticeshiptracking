@@ -42,6 +42,8 @@ const addManualButton = $('addManualButton');
 const manualAddForm = $('manualAddForm');
 const cancelManualAdd = $('cancelManualAdd');
 const exportCsvButton = $('exportCsvButton');
+const importFileButton = $('importFileButton');
+const importFileInput = $('importFileInput');
 
 const dashTotalOffers = $('dashTotalOffers');
 const dashTotalApplications = $('dashTotalApplications');
@@ -130,14 +132,6 @@ function hideProgress() {
 
 // ---- fetching offers -------------------------------------------------
 
-// Le scraping cote serveur tourne en tache de fond : on interroge /api/jobs
-// jusqu'a ce que le resultat soit pret, plutot que de garder une seule requete
-// ouverte (ce qui provoquait des erreurs 504). Le scraping interroge desormais
-// beaucoup plus de mots-cles sectoriels (banque/fonds/private equity/etc. sur
-// LinkedIn + Jobijoba + Talent.com) et prend regulierement 4-5 minutes : le
-// timeout client doit rester tres au-dessus de ca, sinon on affiche une erreur
-// a l'utilisateur alors meme que le scraping continue en arriere-plan cote
-// serveur et aurait fini quelques secondes plus tard.
 const JOBS_POLL_INTERVAL_MS = 3000;
 const JOBS_POLL_MAX_ATTEMPTS = 240; // ~12 minutes max
 
@@ -155,8 +149,6 @@ async function requestJobs(city, forceRefresh) {
     if (!data.inProgress) {
       return data;
     }
-    // Ne jamais redemander un refresh une fois le scraping lancé : le serveur
-    // le relancerait sinon en boucle a chaque poll.
     refreshFlag = false;
     showProgress(`Recherche en cours... (${Math.round(((attempt + 1) * JOBS_POLL_INTERVAL_MS) / 1000)}s)`);
     await new Promise((resolve) => setTimeout(resolve, JOBS_POLL_INTERVAL_MS));
@@ -491,8 +483,6 @@ function renderTracking() {
     });
   });
 
-  // Pas de renderTracking() ici : un re-render sur chaque frappe ferait perdre
-  // le focus/curseur du textarea pendant la saisie.
   trackingBoard.querySelectorAll('.tracking-note').forEach((textarea) => {
     textarea.addEventListener('input', (event) => {
       const offerId = event.target.getAttribute('data-offer-id');
@@ -504,7 +494,7 @@ function renderTracking() {
   });
 }
 
-// ---- CSV export -------------------------------------------------
+// ---- CSV / JSON import & CSV export -------------------------------------------------
 
 const CSV_BOM = String.fromCharCode(0xfeff);
 
@@ -540,6 +530,127 @@ function exportTrackingCsv() {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(objectUrl);
+}
+
+function normalizeImportedJobType(raw) {
+  const v = String(raw || '').toUpperCase();
+  if (v.includes('VIE')) return 'VIE';
+  if (v.includes('CDI')) return 'CDI';
+  if (v.includes('CDD')) return 'CDD';
+  if (v.includes('ALTERNANCE')) return 'Alternance';
+  if (v.includes('STAGE')) return 'Stage';
+  return 'Non défini';
+}
+
+function normalizeImportedStatus(raw) {
+  const v = String(raw || '').trim();
+  if (TRACKING_STATUSES.includes(v)) return v;
+  return TRACKING_STATUSES[0];
+}
+
+function parseCsvLine(line, delimiter) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function importTrackingFromFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const text = String(reader.result || '').replace(/^\uFEFF/, '').trim();
+      if (!text) return;
+      const now = new Date().toISOString();
+      let added = 0;
+
+      if (file.name.toLowerCase().endsWith('.json')) {
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed)
+          ? parsed.map((item, idx) => [item.id || `import-${Date.now()}-${idx}`, item])
+          : Object.entries(parsed);
+        list.forEach(([id, item]) => {
+          if (!item || !item.title || state.tracked[id]) return;
+          state.tracked[id] = {
+            status: normalizeImportedStatus(item.status),
+            jobType: normalizeImportedJobType(item.jobType || item.contract_type),
+            note: String(item.note || item.notes || ''),
+            addedAt: item.addedAt || now,
+            appliedAt: item.appliedAt || null,
+            manual: true,
+            title: String(item.title || item.role).trim(),
+            company: String(item.company || '').trim(),
+            url: String(item.url || '').trim(),
+          };
+          added += 1;
+        });
+      } else {
+        const lines = text.split(/\r?\n/).filter((l) => l.trim());
+        if (lines.length < 2) return;
+        const delimiter = lines[0].includes(';') ? ';' : ',';
+        const headers = parseCsvLine(lines[0], delimiter).map((h) => h.toLowerCase());
+        const idx = (names) => headers.findIndex((h) => names.some((n) => h.includes(n)));
+        const titleIdx = idx(['titre', 'title', 'role', 'poste']);
+        const companyIdx = idx(['entreprise', 'company']);
+        const statusIdx = idx(['statut', 'status']);
+        const typeIdx = idx(['type', 'contract']);
+        const urlIdx = idx(['lien', 'url']);
+        const noteIdx = idx(['note']);
+        const locIdx = idx(['location', 'lieu']);
+
+        for (let i = 1; i < lines.length; i += 1) {
+          const cols = parseCsvLine(lines[i], delimiter);
+          const title = titleIdx >= 0 ? cols[titleIdx] : '';
+          if (!title) continue;
+          const company = companyIdx >= 0 ? cols[companyIdx] : '';
+          const id = `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`;
+          const loc = locIdx >= 0 && cols[locIdx] ? `${cols[locIdx]} — ` : '';
+          const note = `${loc}${noteIdx >= 0 ? cols[noteIdx] || '' : ''}`.trim();
+          state.tracked[id] = {
+            status: normalizeImportedStatus(statusIdx >= 0 ? cols[statusIdx] : ''),
+            jobType: normalizeImportedJobType(typeIdx >= 0 ? cols[typeIdx] : ''),
+            note,
+            addedAt: now,
+            appliedAt: null,
+            manual: true,
+            title,
+            company,
+            url: urlIdx >= 0 ? cols[urlIdx] || '' : '',
+          };
+          added += 1;
+        }
+      }
+
+      saveTracked();
+      renderTracking();
+      updateDashboard();
+      statusText.textContent = `${added} candidature(s) importée(s) avec succès.`;
+    } catch (error) {
+      console.error('Erreur import:', error);
+      statusText.textContent = `Erreur lors de l'import: ${error.message}`;
+    } finally {
+      importFileInput.value = '';
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
 }
 
 // ---- dashboard -------------------------------------------------
@@ -729,6 +840,12 @@ manualAddForm.addEventListener('submit', (event) => {
 });
 
 exportCsvButton.addEventListener('click', exportTrackingCsv);
+if (importFileButton && importFileInput) {
+  importFileButton.addEventListener('click', () => importFileInput.click());
+  importFileInput.addEventListener('change', (event) => {
+    importTrackingFromFile(event.target.files?.[0]);
+  });
+}
 
 // ---- init -------------------------------------------------
 
